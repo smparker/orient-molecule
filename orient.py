@@ -4,10 +4,71 @@ import sys
 import math as m
 import numpy as np
 
+# masses of most common isotopes to 3 decimal points, from
+# http://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl
+masses = {
+    'x': 0.000,
+    'h': 1.008,
+    'he': 4.003,
+    'li': 7.016,
+    'be': 9.012,
+    'b': 11.009,
+    'c': 12.000,
+    'n': 14.003,
+    'o': 15.995,
+    'f': 18.998,
+    'ne': 19.992,
+    'na': 22.990,
+    'mg': 23.985,
+    'al': 26.981,
+    'si': 27.977,
+    'p': 30.974,
+    's': 31.972,
+    'cl': 34.969,
+    'ar': 39.962,
+    'k': 38.964,
+    'ca': 39.963,
+    'sc': 44.956,
+    'ti': 47.948,
+    'v': 50.944,
+    'cr': 51.941,
+    'mn': 54.938,
+    'fe': 55.935,
+    'co': 58.933,
+    'ni': 57.935,
+    'cu': 62.930,
+    'zn': 63.929,
+    'ga': 68.926,
+    'ge': 73.921,
+    'as': 74.922,
+    'se': 79.917,
+    'br': 78.918,
+    'kr': 83.912,
+    'rb': 84.912,
+    'sr': 87.906,
+    'y': 88.906,
+    'zr': 89.905,
+    'nb': 92.906,
+    'mo': 97.905,
+    'tc': 98.906,
+    'ru': 101.904,
+    'rh': 102.906,
+    'pd': 107.904,
+    'ag': 106.905,
+    'cd': 113.903,
+    'in': 114.904,
+    'sn': 119.902,
+    'sb': 120.904,
+    'te': 129.906,
+    'i': 126.904,
+    'xe': 131.904
+}
+
 class Geometry:
   names = []
   coordinates = np.array([])
   natoms = 0
+  com = np.array([])
 
   def __init__(self, names, coordinates):
     self.names = names
@@ -19,6 +80,25 @@ class Geometry:
 
     for i in range(self.natoms):
       print "%3s   %14.10f   %14.10f   %14.10f" % (self.names[i], self.coordinates[i,0], self.coordinates[i,1], self.coordinates[i,2])
+
+  def getCOM(self):
+    '''
+    Returns the center of mass of the geometry.
+    '''
+    if (len(self.com) == 3):
+      return self.com
+    else:
+      sums = np.zeros(3)
+      totMass = 0.0
+      for ii, name in enumerate(self.names):
+        sums[:] += masses[name.lower()]*self.coordinates[ii,:]
+        totMass += masses[name.lower()]
+
+      sums[:] /= totMass
+
+      self.com = sums
+
+      return sums
 
 def read(filename):
   f = open(filename)
@@ -122,9 +202,10 @@ if __name__ == '__main__':
   if (len(sys.argv) == 1) :
     print "Usage:"
     print "  %s <filename> [operations]+\n" % sys.argv[0].split('/')[-1]
-    print "File must be in xyz foramt. Operations can be strung together. Allowed operations are:"
+    print "File must be in xyz format. Operations can be strung together. Allowed operations are:"
     print "    -t[xyz] <distance>             \t -- translate in x, y, or z direction"
     print "    -ta <atom>                     \t -- translate <atom> to origin"
+    print "    -tc                            \t -- translate center of mass to origin"
     print "    -r[xyz] <angle>                \t -- rotate around given axis"
     print "    -rp <atom> <atom> <angle>      \t -- rotate around axis defined by pair of atoms"
     print "    -rv <x> <y> <z> <angle>        \t -- rotate around defined vector"
@@ -151,6 +232,7 @@ if __name__ == '__main__':
         elif (opt[2] == 'y'): translation[1] = float(options.pop(0))
         elif (opt[2] == 'z'): translation[2] = float(options.pop(0))
         elif (opt[2] == 'a'): translation[:] = -geom.coordinates[int(options.pop(0))-1, :]
+        elif (opt[2] == 'c'): translation[:] = -geom.getCOM()
         else: raise Exception("Unrecognized translation option")
 
         ops.append(Translate(translation))
