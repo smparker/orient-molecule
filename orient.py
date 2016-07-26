@@ -66,18 +66,17 @@ masses = {
 
 
 class Geometry:
-    names = []
-    coordinates = np.array([])
-    natoms = 0
-    com = np.array([])
 
-    def __init__(self, names, coordinates):
+    def __init__(self, names, coordinates, comment = ""):
         self.names = names
         self.coordinates = coordinates
         self.natoms = coordinates.shape[0]
+        self.comment = comment
+        self.com = np.array([])
 
     def out(self):
-        print "%s\n" % self.natoms
+        print "%s" % self.natoms
+        print "%s" % self.comment
 
         for i in range(self.natoms):
             print "%3s   %14.10f   %14.10f   %14.10f" % (self.names[i], self.coordinates[i, 0], self.coordinates[i, 1], self.coordinates[i, 2])
@@ -108,7 +107,7 @@ def read(filename):
     f.close()
 
     natoms = int(raw.pop(0))
-    comment = raw.pop(0)
+    comment = raw.pop(0).rstrip()
 
     names = []
     coords = np.zeros([len(raw), 3])
@@ -118,11 +117,10 @@ def read(filename):
         names.append(tmp[0])
         coords[i, :] = [ float(tmp[1]), float(tmp[2]), float(tmp[3]) ]
 
-    return Geometry(names, coords)
+    return Geometry(names, coords, comment=comment)
 
 
 class Operation:
-
     def act(self, data):
         raise Exception("Improper use of Operation class!")
 
@@ -134,8 +132,6 @@ class Operation:
 
 
 class Translate(Operation):
-    displacement = np.zeros(3)
-
     def __init__(self, displacement):
         self.displacement = displacement
 
@@ -154,8 +150,6 @@ class Translate(Operation):
 
 
 class Rotate(Operation):
-    A = np.eye(3)
-
     def __init__(self, arg1, arg2=None):
         if (arg2 is None):
             self.A = arg1
@@ -190,7 +184,8 @@ class Rotate(Operation):
 
 
 class OperationList:
-    operations = []
+    def __init__(self):
+        self.operations = []
 
     def append(self, op):
         if(len(self) == 0):
@@ -228,13 +223,13 @@ if __name__ == '__main__':
 
     options = sys.argv[:]
 
-    options.pop(0)
+    options.pop(0) # first element is name of program
     filename = options.pop(0)  # filename MUST come first
     geom = read(filename)
 
     while(options):
         opt = options.pop(0)
-        if (opt[1] == 't'):
+        if (opt[1] == 't'): # translations
             if (len(opt) != 3):
                 raise Exception(
                     "Need to specify a translation option (x, y, z, a)")
@@ -254,7 +249,7 @@ if __name__ == '__main__':
                     raise Exception("Unrecognized translation option")
 
                 ops.append(Translate(translation))
-        elif (opt[1] == 'r'):
+        elif (opt[1] == 'r'): # rotations
             if (len(opt) != 3):
                 raise Exception(
                     "Need to specify a rotation option (x, y, z, p, v)")
