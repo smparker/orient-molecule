@@ -205,7 +205,7 @@ class OperationList:
         return iter(self.operations)
 
 if __name__ == '__main__':
-    if (len(sys.argv) == 1):
+    if (len(sys.argv) == 1 or sys.argv[1].lower() == "-h" or sys.argv[1].lower() == "--help"):
         print "Usage:"
         print "  %s <filename> [operations]+\n" % sys.argv[0].split('/')[-1]
         print "File must be in xyz format. Operations can be strung together. Allowed operations are:"
