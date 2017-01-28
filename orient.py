@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import sys
+from __future__ import print_function
+
 import math as m
 import numpy as np
 
@@ -75,13 +76,14 @@ class Geometry:
         self.com = np.array([])
 
     def out(self):
-        print "%s" % self.natoms
-        print "%s" % self.comment
+        print("%s" % self.natoms)
+        print("%s" % self.comment)
 
         for i in range(self.natoms):
-            print "%3s   %14.10f   %14.10f   %14.10f" % (self.names[i], self.coordinates[i, 0], self.coordinates[i, 1], self.coordinates[i, 2])
+            print("%3s   %14.10f   %14.10f   %14.10f" % (self.names[i], self.coordinates[i, 0],
+                self.coordinates[i, 1], self.coordinates[i, 2]))
 
-    def getCOM(self):
+    def computeCOM(self):
         '''
         Returns the center of mass of the geometry.
         '''
@@ -90,8 +92,8 @@ class Geometry:
         else:
             sums = np.zeros(3)
             totMass = 0.0
-            for ii, name in enumerate(self.names):
-                sums[:] += masses[name.lower()]*self.coordinates[ii, :]
+            for i, name in enumerate(self.names):
+                sums[:] += masses[name.lower()]*self.coordinates[i, :]
                 totMass += masses[name.lower()]
 
             sums[:] /= totMass
@@ -99,6 +101,25 @@ class Geometry:
             self.com = sums
 
             return sums
+
+    def computeInertia(self):
+        '''Returns the moment of inertia tensor'''
+        com = self.computeCOM()
+        ixx = ixy = ixz = iyy = iyz = izz = 0.0
+        for i, name in enumerate(self.names):
+            x, y, z = self.coordinates[i,:] - com
+            mass = masses[name.lower()]
+
+            ixx += (y**2 + z**2)*mass
+            ixy -= (x*y)*mass
+            ixz -= (x*z)*mass
+            iyy += (x**2 + z**2)*mass
+            iyz -= (y*z)*mass
+            izz += (x**2 + y**2)*mass
+
+        return np.array([ [ixx, ixy, ixz],
+                          [ixy, iyy, iyz],
+                          [ixz, iyz, izz]])
 
 
 def read(filename):
@@ -204,27 +225,52 @@ class OperationList:
     def __iter__(self):
         return iter(self.operations)
 
-if __name__ == '__main__':
-    if (len(sys.argv) == 1):
-        print "Usage:"
-        print "  %s <filename> [operations]+\n" % sys.argv[0].split('/')[-1]
-        print "File must be in xyz format. Operations can be strung together. Allowed operations are:"
-        print "    -t[xyz] <distance>             \t -- translate in x, y, or z direction"
-        print "    -ta <atom>                     \t -- translate <atom> to origin"
-        print "    -tc                            \t -- translate center of mass to origin"
-        print "    -r[xyz] <angle>                \t -- rotate around given axis"
-        print "    -rp <atom> <atom> <angle>      \t -- rotate around axis defined by pair of atoms"
-        print "    -rv <x> <y> <z> <angle>        \t -- rotate around defined vector"
-        print "    -a <atom1> <atom2> <atom3>     \t -- align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane"
+def usage():
+    print("Usage:")
+    print("  orient [operations]+\n")
+    print("File must be in xyz format. Operations can be strung together. Allowed operations are:")
+    print("    -t[xyz] <distance>             \t -- translate in x, y, or z direction")
+    print("    -ta <atom>                     \t -- translate <atom> to origin")
+    print("    -tc                            \t -- translate center of mass to origin")
+    print("    -r[xyz] <angle>                \t -- rotate around given axis")
+    print("    -rp <atom> <atom> <angle>      \t -- rotate around axis defined by pair of atoms")
+    print("    -rv <x> <y> <z> <angle>        \t -- rotate around defined vector")
+    print("    -a <atom1> <atom2> <atom3>     \t -- align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane")
+    print("    -op                            \t -- translate to center of mass, orient along principle axes")
+
+def orient(arglist):
+    if (len(arglist) == 0):
+        usage()
         exit()
 
     # First, interpret input and build OperationsList
     ops = OperationList()
 
-    options = sys.argv[:]
+    # map from option to number of expected arguments
+    nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
+        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 2, "rv" : 3, "a" : 3, "op" : 0 }
 
-    options.pop(0) # first element is name of program
-    filename = options.pop(0)  # filename MUST come first
+    # lets preprocess the options so we let the filename be anywhere in the list
+    options = []
+    filename = None
+    i = 0
+    while True:
+        if i == len(arglist):
+            break
+        op = arglist[i]
+        if op[0] != "-": # maybe a filename
+            if filename is not None:
+                print("multiple filenames found! sticking with %s" % filename)
+            filename = op
+            i += 1
+        else:
+            if op[1:] in nargs:
+                narg = nargs[op[1:]]+1
+                options.extend(arglist[i:i+narg])
+                i += narg
+            else:
+                raise Exception("Unrecognized command: \"%s\" !" % op)
+
     geom = read(filename)
 
     while(options):
@@ -244,7 +290,7 @@ if __name__ == '__main__':
                 elif (opt[2] == 'a'):
                     translation[:] = -geom.coordinates[int(options.pop(0))-1, :]
                 elif (opt[2] == 'c'):
-                    translation[:] = -geom.getCOM()
+                    translation[:] = -geom.computeCOM()
                 else:
                     raise Exception("Unrecognized translation option")
 
@@ -304,10 +350,20 @@ if __name__ == '__main__':
 
             rotation_matrix = np.array([vec1[:], vec2[:], vec3[:]])
             ops.append(Rotate(rotation_matrix))
+        elif (opt[1:] == 'op'):
+            ops.append(Translate(-geom.computeCOM()))
+            inertia = geom.computeInertia()
+            eigs, axes = np.linalg.eigh(inertia)
+            ops.append(Rotate(axes))
         else:
             raise Exception("Unknown operation")
 
     for op in ops:
         op(geom.coordinates)
 
-    geom.out()
+    return geom
+
+if __name__ == "__main__":
+    import sys
+
+    orient(sys.argv[1:]).out()
