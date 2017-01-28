@@ -225,24 +225,7 @@ class OperationList:
     def __iter__(self):
         return iter(self.operations)
 
-def usage():
-    print("Usage:")
-    print("  orient [operations]+\n")
-    print("File must be in xyz format. Operations can be strung together. Allowed operations are:")
-    print("    -t[xyz] <distance>             \t -- translate in x, y, or z direction")
-    print("    -ta <atom>                     \t -- translate <atom> to origin")
-    print("    -tc                            \t -- translate center of mass to origin")
-    print("    -r[xyz] <angle>                \t -- rotate around given axis")
-    print("    -rp <atom> <atom> <angle>      \t -- rotate around axis defined by pair of atoms")
-    print("    -rv <x> <y> <z> <angle>        \t -- rotate around defined vector")
-    print("    -a <atom1> <atom2> <atom3>     \t -- align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane")
-    print("    -op                            \t -- translate to center of mass, orient along principle axes")
-
 def orient(arglist):
-    if (len(arglist) == 0):
-        usage()
-        exit()
-
     # First, interpret input and build OperationsList
     ops = OperationList()
 
@@ -365,5 +348,9 @@ def orient(arglist):
 
 if __name__ == "__main__":
     import sys
+
+    if (len(sys.argv) == 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help")):
+        usage()
+        exit()
 
     orient(sys.argv[1:]).out()
