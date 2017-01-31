@@ -1,3 +1,5 @@
+check/*/output.xyz
+
 *.py[cod]
 
 # C extensions
