@@ -65,22 +65,24 @@ masses = {
     'xe': 131.904
 }
 
-class Geometry:
-
-    def __init__(self, names, coordinates, comment = ""):
+class Geometry(object):
+    '''Stores all of the data in an xyz file'''
+    def __init__(self, names, coordinates, comment = "", extras = []):
         self.names = names
         self.coordinates = coordinates
         self.natoms = coordinates.shape[0]
         self.comment = comment
+        self.extras = extras
         self.com = np.array([])
 
-    def out(self):
+    def print(self):
         print("%s" % self.natoms)
         print("%s" % self.comment)
 
         for i in range(self.natoms):
-            print("%3s   %14.10f   %14.10f   %14.10f" % (self.names[i], self.coordinates[i, 0],
-                self.coordinates[i, 1], self.coordinates[i, 2]))
+            extra = self.extras[i] if len(self.extras) > 0 else ""
+            print("%3s   %14.10f   %14.10f   %14.10f %s" % (self.names[i], self.coordinates[i, 0],
+                self.coordinates[i, 1], self.coordinates[i, 2], extra))
 
     def computeCOM(self):
         '''
@@ -120,38 +122,45 @@ class Geometry:
                           [ixy, iyy, iyz],
                           [ixz, iyz, izz]])
 
+def read_xyz(filename):
+    '''reads xyz file and returns Geometry object'''
+    with open(filename, "r") as f:
+        natoms = int(f.readline())
+        comment = f.readline().rstrip()
 
-def read(filename):
-    f = open(filename)
-    raw = f.readlines()
-    f.close()
+        names = []
+        coords = []
+        extras = []
 
-    natoms = int(raw.pop(0))
-    comment = raw.pop(0).rstrip()
+        for i in range(natoms):
+            line = f.readline()
+            data = line.split()
+            name, x, y, z = data[0:4]
+            extra = " ".join(data[4:]) if len(data) > 4 else ""
 
-    names = []
-    coords = np.zeros([len(raw), 3])
+            names.append(name)
+            coords.append( [float(x), float(y), float(z)] )
+            extras.append(extra)
 
-    for i in range(natoms):
-        tmp = raw[i].split()
-        names.append(tmp[0])
-        coords[i, :] = [ float(tmp[1]), float(tmp[2]), float(tmp[3]) ]
+    return Geometry(names, np.array(coords), comment=comment, extras=extra)
 
-    return Geometry(names, coords, comment=comment)
-
-
-class Operation:
-    def act(self, data):
+class Operation(object):
+    '''Base class for generic operation'''
+    def __call__(self, data):
+        '''act on provided coordinate data'''
         raise Exception("Improper use of Operation class!")
 
     def iscomposable(self, op):
+        '''return true if this op can composed with input op'''
         raise Exception("Improper use of Operation class!")
 
     def compose(self, op):
+        '''compose this op and input op'''
         raise Exception("Improper use of Operation class!")
 
 
 class Translate(Operation):
+    '''Generic translation'''
     def __init__(self, displacement):
         self.displacement = displacement
 
@@ -170,6 +179,7 @@ class Translate(Operation):
 
 
 class Rotate(Operation):
+    '''Generic rotation'''
     def __init__(self, arg1, arg2=None):
         if (arg2 is None):
             self.A = arg1
@@ -203,7 +213,8 @@ class Rotate(Operation):
             self.A = np.dot(self.A, rot.A)
 
 
-class OperationList:
+class OperationList(object):
+    '''Set of operations that automatically composes appended operations, when possible'''
     def __init__(self):
         self.operations = []
 
@@ -242,9 +253,6 @@ def orient(arglist):
         usage()
         return
 
-    # First, interpret input and build OperationsList
-    ops = OperationList()
-
     # map from option to number of expected arguments
     nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
         "rx" : 1, "ry" : 1, "rz" : 1, "rp": 2, "rv" : 3, "a" : 3, "op" : 0 }
@@ -270,7 +278,10 @@ def orient(arglist):
             else:
                 raise Exception("Unrecognized command: \"%s\" !" % op)
 
-    geom = read(filename)
+    geom = read_xyz(filename)
+
+    # interpret input and build OperationsList
+    ops = OperationList()
 
     while(options):
         opt = options.pop(0)
@@ -289,6 +300,8 @@ def orient(arglist):
                 elif (opt[2] == 'a'):
                     translation[:] = -geom.coordinates[int(options.pop(0))-1, :]
                 elif (opt[2] == 'c'):
+                    if len(ops) != 0:
+                        raise Exception("Translation of center of mass may not be applied after other transformations")
                     translation[:] = -geom.computeCOM()
                 else:
                     raise Exception("Unrecognized translation option")
@@ -350,6 +363,8 @@ def orient(arglist):
             rotation_matrix = np.array([vec1[:], vec2[:], vec3[:]])
             ops.append(Rotate(rotation_matrix))
         elif (opt[1:] == 'op'):
+            if len(ops) != 0:
+                raise Exception("Orientation to principle axes may not be applied after other transformations")
             ops.append(Translate(-geom.computeCOM()))
             inertia = geom.computeInertia()
             eigs, axes = np.linalg.eigh(inertia)
@@ -369,4 +384,4 @@ if __name__ == "__main__":
         usage()
         exit()
 
-    orient(sys.argv[1:]).out()
+    orient(sys.argv[1:]).print()
