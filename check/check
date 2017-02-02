@@ -2,25 +2,28 @@
 
 let nfailed=0
 
+BASE=$(dirname $0)
+ORIENT=$BASE/../orient.py
+
 # general test
-../orient.py -tx 1.0 -ty -0.7 -tz 0.2 -rx 75 -ry 40 -rz -60 test.xyz > general/output.xyz
-DIFF=$(diff general/output.xyz general/reference.xyz)
+$ORIENT -tx 1.0 -ty -0.7 -tz 0.2 -rx 75 -ry 40 -rz -60 $BASE/test.xyz > $BASE/general/output.xyz
+DIFF=$(diff $BASE/general/output.xyz $BASE/general/reference.xyz)
 if [ "$DIFF" != "" ]; then
   echo 'General test failed!'
   let nfailed+=1
 fi
 
 # principle axes test
-../orient.py -op test.xyz > principle/output.xyz
-DIFF=$(diff principle/output.xyz principle/reference.xyz)
+$ORIENT -op $BASE/test.xyz > $BASE/principle/output.xyz
+DIFF=$(diff $BASE/principle/output.xyz $BASE/principle/reference.xyz)
 if [ "$DIFF" != "" ]; then
   echo 'Principle test failed!'
   let nfailed+=1
 fi
 
 # align test
-../orient.py -a 1 2 3 test.xyz > align/output.xyz
-DIFF=$(diff align/output.xyz align/reference.xyz)
+$ORIENT -a 1 2 3 $BASE/test.xyz > $BASE/align/output.xyz
+DIFF=$(diff $BASE/align/output.xyz $BASE/align/reference.xyz)
 if [ "$DIFF" != "" ]; then
   echo 'Align test failed!'
   let nfailed+=1
@@ -30,4 +33,5 @@ if [ $nfailed -eq 0 ]; then
   echo 'All tests passed!'
 else
   echo "$nfailed tests failed."
+  exit 1
 fi
