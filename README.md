@@ -1,6 +1,5 @@
-Orient molecule
+Orient molecule [![Build Status](https://travis-ci.org/smparker/orient-molecule.svg?branch=master)](https://travis-ci.org/smparker/orient-molecule)
 ===============
-
 Provides a python script to perform routine manipulations of .xyz coordinate files used in quantum chemistry.
 This script started out as Python practice but ended up being quite useful.
 
