@@ -7,7 +7,7 @@ ORIENT=$BASE/../orient.py
 
 # general test
 $ORIENT -tx 1.0 -ty -0.7 -tz 0.2 -rx 75 -ry 40 -rz -60 $BASE/test.xyz > $BASE/general/output.xyz
-DIFF=$(diff $BASE/general/output.xyz $BASE/general/reference.xyz)
+DIFF=$(diff -b $BASE/general/output.xyz $BASE/general/reference.xyz)
 if [ "$DIFF" != "" ]; then
   echo 'General test failed!'
   let nfailed+=1
@@ -15,7 +15,7 @@ fi
 
 # principle axes test
 $ORIENT -op $BASE/test.xyz > $BASE/principle/output.xyz
-DIFF=$(diff $BASE/principle/output.xyz $BASE/principle/reference.xyz)
+DIFF=$(diff -b $BASE/principle/output.xyz $BASE/principle/reference.xyz)
 if [ "$DIFF" != "" ]; then
   echo 'Principle test failed!'
   let nfailed+=1
@@ -23,7 +23,7 @@ fi
 
 # align test
 $ORIENT -a 1 2 3 $BASE/test.xyz > $BASE/align/output.xyz
-DIFF=$(diff $BASE/align/output.xyz $BASE/align/reference.xyz)
+DIFF=$(diff -b $BASE/align/output.xyz $BASE/align/reference.xyz)
 if [ "$DIFF" != "" ]; then
   echo 'Align test failed!'
   let nfailed+=1
