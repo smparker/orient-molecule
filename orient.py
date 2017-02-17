@@ -385,7 +385,7 @@ def orient(arglist):
             ops.append(Translate(-geom.computeCOM()))
             inertia = geom.computeInertia()
             eigs, axes = np.linalg.eigh(inertia)
-            ops.append(Rotate(axes))
+            ops.append(Rotate(axes.T))
         else:
             raise Exception("Unknown operation")
 
