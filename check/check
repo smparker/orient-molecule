@@ -29,6 +29,14 @@ if [ "$DIFF" != "" ]; then
   let nfailed+=1
 fi
 
+# fitplane test
+$ORIENT -p 1 12 2 3 $BASE/test.xyz > $BASE/fitplane/output.xyz
+DIFF=$(diff -b $BASE/fitplane/output.xyz $BASE/fitplane/reference.xyz)
+if [ "$DIFF" != "" ]; then
+  echo 'fitplane test failed!'
+  let nfailed+=1
+fi
+
 if [ $nfailed -eq 0 ]; then
   echo 'All tests passed!'
 else

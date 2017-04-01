@@ -263,6 +263,7 @@ def usage():
     print("    -rp <atom> <atom> <angle>      \t -- rotate around axis defined by pair of atoms")
     print("    -rv <x> <y> <z> <angle>        \t -- rotate around defined vector")
     print("    -a <atom1> <atom2> <atom3>     \t -- align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane")
+    print("    -p <atom1> ... <atomk>         \t -- align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis")
     print("    -op                            \t -- translate to center of mass, orient along principle axes")
 
 def orient(arglist):
@@ -272,7 +273,7 @@ def orient(arglist):
 
     # map from option to number of expected arguments
     nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
-        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 2, "rv" : 3, "a" : 3, "op" : 0 }
+        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 2, "rv" : 3, "a" : 3, "op" : 0, "p" : "+" }
 
     # lets preprocess the options so we let the filename be anywhere in the list
     options = []
@@ -289,9 +290,21 @@ def orient(arglist):
             i += 1
         else:
             if op[1:] in nargs:
-                narg = nargs[op[1:]]+1
-                options.extend(arglist[i:i+narg])
-                i += narg
+                if "+" == nargs[op[1:]]:
+                    narg = 1
+                    try:
+                        while i+narg < len(arglist) and arglist[i+narg][0] != "-":
+                            int(arglist[i+narg])
+                            narg += 1
+                    except ValueError:
+                        pass
+
+                    options.extend(arglist[i:i+narg])
+                    i += narg
+                else:
+                    narg = nargs[op[1:]]+1
+                    options.extend(arglist[i:i+narg])
+                    i += narg
             else:
                 raise Exception("Unrecognized command: \"%s\" !" % op)
 
@@ -386,6 +399,38 @@ def orient(arglist):
             inertia = geom.computeInertia()
             eigs, axes = np.linalg.eigh(inertia)
             ops.append(Rotate(axes.T))
+        elif (opt[1:] == 'p'):
+            if len(ops) != 0:
+                raise Exception("Orientation to fitted plane may not be applied after other transformations")
+            iatoms = []
+            try:
+                while len(options) > 0 and options[0][0] != "-":
+                    ia = int(options[0])
+                    iatoms.append(ia)
+                    options.pop(0)
+            except ValueError:
+                pass
+
+            atoms = np.array([ geom.coordinates[i-1,:] for i in iatoms ])
+            centroid = sum(atoms, 0) / len(iatoms)
+
+            for i in range(atoms.shape[0]):
+                atoms[i,:] -= centroid
+
+            U, s, V = np.linalg.svd(atoms, full_matrices=False)
+
+            normal = V[2,:]
+            normal /= np.linalg.norm(normal)
+
+            xvec = atoms[1,:] - atoms[0,:]
+            vec1 = xvec - np.dot(xvec,normal)*normal
+            vec1 /= np.linalg.norm(vec1)
+
+            vec2 = np.cross(normal, vec1)
+            rotation_matrix = np.array([ vec1, vec2, normal])
+
+            ops.append(Translate(-centroid))
+            ops.append(Rotate(rotation_matrix))
         else:
             raise Exception("Unknown operation")
 
