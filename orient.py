@@ -19,6 +19,8 @@
 
 from __future__ import print_function
 
+import sys
+
 import math as m
 import numpy as np
 
@@ -84,7 +86,7 @@ masses = {
 
 class Geometry(object):
     '''Stores all of the data in an xyz file'''
-    def __init__(self, names, coordinates, comment = "", extras = []):
+    def __init__(self, names, coordinates, comment = "", extras = None):
         self.names = names
         self.coordinates = coordinates
         self.natoms = coordinates.shape[0]
@@ -97,8 +99,8 @@ class Geometry(object):
         print("%s" % self.comment)
 
         for i in range(self.natoms):
-            extra = self.extras[i] if len(self.extras) > 0 else ""
-            print("%3s   %14.10f   %14.10f   %14.10f %s" % (self.names[i], self.coordinates[i, 0],
+            extra = "   ".join(["%14.10f" % float(x) for x in self.extras[i]]) if self.extras else ""
+            print("%3s   %14.10f   %14.10f   %14.10f   %s" % (self.names[i], self.coordinates[i, 0],
                 self.coordinates[i, 1], self.coordinates[i, 2], extra))
 
     def computeCOM(self):
@@ -141,25 +143,34 @@ class Geometry(object):
 
 def read_xyz(filename):
     '''reads xyz file and returns Geometry object'''
+    out = []
+
     with open(filename, "r") as f:
-        natoms = int(f.readline())
-        comment = f.readline().rstrip()
+        line = f.readline()
+        while line != "":
+            natoms = int(line)
+            comment = f.readline().rstrip()
 
-        names = []
-        coords = []
-        extras = []
+            names = []
+            coords = []
+            extras = []
 
-        for i in range(natoms):
+            for i in range(natoms):
+                line = f.readline()
+                data = line.split()
+                name, x, y, z = data[0:4]
+                extra = data[4:]
+
+                names.append(name.capitalize())
+                coords.append( [float(x), float(y), float(z)] )
+                if extra:
+                    extras.append(extra)
+
+            out.append(Geometry(names, np.array(coords), comment=comment, extras=extras))
+
             line = f.readline()
-            data = line.split()
-            name, x, y, z = data[0:4]
-            extra = " ".join(data[4:]) if len(data) > 4 else ""
 
-            names.append(name)
-            coords.append( [float(x), float(y), float(z)] )
-            extras.append(extra)
-
-    return Geometry(names, np.array(coords), comment=comment, extras=extra)
+    return out
 
 class Operation(object):
     '''Base class for generic operation'''
@@ -308,7 +319,11 @@ def orient(arglist):
             else:
                 raise Exception("Unrecognized command: \"%s\" !" % op)
 
-    geom = read_xyz(filename)
+    geoms = read_xyz(filename)
+    geom = geoms[0]
+
+    if len(geoms) > 1:
+        print("Multiple frames found. Operations that require input will only use first frame.", file=sys.stderr)
 
     # interpret input and build OperationsList
     ops = OperationList()
@@ -434,10 +449,11 @@ def orient(arglist):
         else:
             raise Exception("Unknown operation")
 
-    for op in ops:
-        op(geom.coordinates)
+    for g in geoms:
+        for op in ops:
+            op(geom.coordinates)
 
-    return geom
+    return geoms
 
 if __name__ == "__main__":
     import sys
@@ -446,4 +462,6 @@ if __name__ == "__main__":
         usage()
         exit()
 
-    orient(sys.argv[1:]).print()
+    geoms = orient(sys.argv[1:])
+    for g in geoms:
+        g.print()
