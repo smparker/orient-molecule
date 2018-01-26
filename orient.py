@@ -24,6 +24,8 @@ import sys
 import math as m
 import numpy as np
 
+DEBUG = False
+
 # masses of most common isotopes to 3 decimal points, from
 # http://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl
 masses = {
@@ -189,12 +191,13 @@ class Operation(object):
 
 class Translate(Operation):
     '''Generic translation'''
-    def __init__(self, displacement):
-        self.displacement = displacement
+    def __init__(self, displacement_func):
+        self.displacement_func = displacement_func
 
     def __call__(self, data):
+        displacement = self.displacement_func(data)
         for i in range(data.shape[0]):
-            data[i, :] += self.displacement
+            data[i, :] += displacement
 
     def iscomposable(self, op):
         return isinstance(op, Translate)
@@ -203,8 +206,40 @@ class Translate(Operation):
         if not isinstance(trans, Translate):
             raise Exception("Improper use of Translate.compose()!")
         else:
-            self.displacement += trans.displacement
+            func1, func2 = self.displacement_func, trans.displacement_func
+            def new_disp_func(data):
+                return func1(data) + func2(data)
+            self.displacement_func = new_disp_func
 
+def simple_translater(vec):
+    def translater(data):
+        return vec
+    return translater
+
+def atom_translater(iatom, fac = 1.0):
+    def translater(data):
+        return fac * data[iatom,:]
+    return translater
+
+def centroid_translater(atomlist, fac = 1.0):
+    fac = fac / len(atomlist)
+    def translater(data):
+        out = np.zeros(3)
+        for i in atomlist:
+            out[:] += data[i,:]
+        return out * fac
+    return translater
+
+def com_translater(geom):
+    mass = [ masses[n.lower()] for n in geom.names ]
+    def translater(data):
+        com = np.zeros(3)
+        for i, m in enumerate(mass):
+            com += m * data[i,:]
+        com /= sum(mass)
+
+        return -com
+    return translater
 
 class Rotate(Operation):
     '''Generic rotation'''
@@ -335,23 +370,21 @@ def orient(arglist):
                 raise Exception(
                     "Need to specify a translation option (x, y, z, a)")
             else:
-                translation = np.zeros([3])
+                trans = None
                 if (opt[2] == 'x'):
-                    translation[0] = float(options.pop(0))
+                    trans = simple_translater(np.array([ float(options.pop(0)), 0.0, 0.0 ]))
                 elif (opt[2] == 'y'):
-                    translation[1] = float(options.pop(0))
+                    trans = simple_translater(np.array([ 0.0, float(options.pop(0)), 0.0 ]))
                 elif (opt[2] == 'z'):
-                    translation[2] = float(options.pop(0))
+                    trans = simple_translater(np.array([ 0.0, 0.0, float(options.pop(0)) ]))
                 elif (opt[2] == 'a'):
-                    translation[:] = -geom.coordinates[int(options.pop(0))-1, :]
+                    trans = atom_translater(int(options.pop(0))-1, -1.0)
                 elif (opt[2] == 'c'):
-                    if len(ops) != 0:
-                        raise Exception("Translation of center of mass may not be applied after other transformations")
-                    translation[:] = -geom.computeCOM()
+                    trans = com_translater(geom)
                 else:
                     raise Exception("Unrecognized translation option")
 
-                ops.append(Translate(translation))
+                ops.append(Translate(trans))
         elif (opt[1] == 'r'): # rotations
             if (len(opt) != 3):
                 raise Exception(
@@ -359,7 +392,7 @@ def orient(arglist):
             else:
                 axis = np.zeros([3])
                 # Used if I need to translate before and after
-                translation = np.zeros(3)
+                prepost_trans = None
                 if (opt[2] == 'x'):
                     axis[0] = 1.0
                 elif (opt[2] == 'y'):
@@ -370,7 +403,7 @@ def orient(arglist):
                     iatom = int(options.pop(0)) - 1
                     jatom = int(options.pop(0)) - 1
 
-                    translation = 0.5 * (geom.coordinates[iatom, :] + geom.coordinates[jatom,:])
+                    prepost_trans = (centroid_translater([iatom,jatom], -1.0), centroid_translater([iatom,jatom], 1.0))
 
                     axis = geom.coordinates[jatom, :] - geom.coordinates[iatom,:]
                     axis /= np.linalg.norm(axis)
@@ -385,16 +418,22 @@ def orient(arglist):
                 if (opt[2] == 'x' or opt[2] == 'y' or opt[2] == 'z'):
                     ops.append(Rotate(axis, theta))
                 elif (opt[2] == 'p' or opt[2] == 'v'):
-                    ops.append(Translate(-1.0 * translation))
+                    if prepost_trans is not None:
+                        ops.append(Translate(prepost_trans[0]))
                     ops.append(Rotate(axis, theta))
-                    ops.append(Translate(translation))
+                    if prepost_trans is not None:
+                        ops.append(Translate(prepost_trans[1]))
         elif (opt[1] == 'a'):
             # align is called with -a <atom> <atom> <atom>
-            iatom = geom.coordinates[int(options.pop(0))-1, :]
-            jatom = geom.coordinates[int(options.pop(0))-1, :]
-            katom = geom.coordinates[int(options.pop(0))-1, :]
+            ia = int(options.pop(0))-1
+            ja = int(options.pop(0))-1
+            ka = int(options.pop(0))-1
 
-            ops.append(Translate(-0.5 * (iatom + jatom)))
+            iatom = geom.coordinates[ia, :]
+            jatom = geom.coordinates[ja, :]
+            katom = geom.coordinates[ka, :]
+
+            ops.append(Translate(centroid_translater([ia,ja], -1.0)))
 
             vec1 = jatom[:] - iatom[:]
             vec1 /= np.linalg.norm(vec1)
@@ -410,7 +449,8 @@ def orient(arglist):
         elif (opt[1:] == 'op'):
             if len(ops) != 0:
                 raise Exception("Orientation to principle axes may not be applied after other transformations")
-            ops.append(Translate(-geom.computeCOM()))
+            ops.append(Translate(com_translater(geom)))
+            geom.computeCOM()
             inertia = geom.computeInertia()
             eigs, axes = np.linalg.eigh(inertia)
             ops.append(Rotate(axes.T))
@@ -444,7 +484,8 @@ def orient(arglist):
             vec2 = np.cross(normal, vec1)
             rotation_matrix = np.array([ vec1, vec2, normal])
 
-            ops.append(Translate(-centroid))
+            iatoms = [ ia-1 for ia in iatoms ]
+            ops.append(Translate(centroid_translater(iatoms, -1.0)))
             ops.append(Rotate(rotation_matrix))
         else:
             raise Exception("Unknown operation")
@@ -452,6 +493,8 @@ def orient(arglist):
     for g in geoms:
         for op in ops:
             op(geom.coordinates)
+            if DEBUG:
+                geom.print()
 
     return geoms
 
