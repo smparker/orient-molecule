@@ -200,6 +200,7 @@ class Translate(Operation):
             data[i, :] += displacement
 
     def iscomposable(self, op):
+        return False
         return isinstance(op, Translate)
 
     def compose(self, trans):
@@ -243,38 +244,123 @@ def com_translater(geom):
 
 class Rotate(Operation):
     '''Generic rotation'''
-    def __init__(self, arg1, arg2=None):
-        if (arg2 is None):
-            self.A = arg1
-        else:
-            axis = arg1
-            angle = arg2
-            theta = m.radians(angle)
-
-            costheta = m.cos(theta)
-            sintheta = m.sin(theta)
-
-            Ex = np.array(
-                [[0.0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0.0]])
-
-            self.A = costheta * \
-                np.eye(3) + (1.0 - costheta) * \
-                np.dot(axis.reshape(3, 1), axis.reshape(1, 3)) + \
-                sintheta * Ex
+    def __init__(self):
+        self.rotate_func = None
 
     def __call__(self, data):
-        tmp = np.dot(data, self.A.transpose())
+        A = self.rotate_func(data)
+        tmp = np.dot(data, A.transpose())
         data[:] = tmp[:]
 
     def iscomposable(self, op):
-        return isinstance(op, Rotate)
+        '''Safety first'''
+        return False
 
     def compose(self, rot):
         if not isinstance(rot, Rotate):
             raise Exception("Improper use of Rotate.compose()")
         else:
-            self.A = np.dot(self.A, rot.A)
+            func1, func2 = self.rotate_func, rot.rotate_func
+            def new_rotate_func(data):
+                A1 = func1(data)
+                A2 = func2(data)
+                return np.dot(A1, A2)
+            self.rotate_func = new_rotate_func
 
+class StaticRotate(Rotate):
+    '''Rotate based on static information'''
+    def __init__(self, rot_matrix):
+        self.rot_matrix = rot_matrix
+
+    def rotate_func(self, data):
+        return self.rot_matrix
+
+    def iscomposable(self, op):
+        return isinstance(op, StaticRotate)
+
+    @classmethod
+    def axis_angle(cls, axis, angle):
+        theta = m.radians(angle)
+
+        costheta = m.cos(theta)
+        sintheta = m.sin(theta)
+
+        Ex = np.array(
+            [[0.0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0.0]])
+
+        A = costheta * \
+            np.eye(3) + (1.0 - costheta) * \
+            np.dot(axis.reshape(3, 1), axis.reshape(1, 3)) + \
+            sintheta * Ex
+
+        return cls(A)
+
+class DynamicRotate(Rotate):
+    def iscomposable(self, op):
+        return False
+
+class AlignRotate(DynamicRotate):
+    def __init__(self, i, j, k):
+        self.i, self.j, self.k = i, j, k
+
+    def rotate_func(self, data):
+        iatom = data[self.i, :]
+        jatom = data[self.j, :]
+        katom = data[self.k, :]
+
+        vec1 = jatom[:] - iatom[:]
+        vec1 /= np.linalg.norm(vec1)
+
+        vec2 = katom[:] - iatom[:]
+        vec2 -= np.dot(vec1, vec2) * vec1[:]
+        vec2 /= np.linalg.norm(vec2)
+
+        vec3 = np.cross(vec1, vec2)
+
+        return np.array([vec1[:], vec2[:], vec3[:]])
+
+class InertiaRotate(DynamicRotate):
+    def __init__(self, geom):
+        self.mass = [ masses[n.lower()] for n in geom.names ]
+
+    def rotate_func(self, data):
+        ixx = ixy = ixz = iyy = iyz = izz = 0.0
+        for i, m in enumerate(self.mass):
+            x, y, z = data[i,:]
+
+            ixx += (y**2 + z**2)*m
+            ixy -= (x*y)*m
+            ixz -= (x*z)*m
+            iyy += (x**2 + z**2)*m
+            iyz -= (y*z)*m
+            izz += (x**2 + y**2)*m
+
+        inertial_tensor = np.array([ [ixx, ixy, ixz],
+                          [ixy, iyy, iyz],
+                          [ixz, iyz, izz]])
+        eig, axes = np.linalg.eigh(inertial_tensor)
+
+        return axes.T
+
+class PlaneRotate(DynamicRotate):
+    def __init__(self, atomlist):
+        self.atomlist = atomlist
+
+    def rotate_func(self, data):
+        atoms = np.array([ data[i,:] for i in self.atomlist ])
+
+        U, s, V = np.linalg.svd(atoms, full_matrices=False)
+
+        normal = V[2,:]
+        normal /= np.linalg.norm(normal)
+
+        xvec = atoms[1,:] - atoms[0,:]
+        vec1 = xvec - np.dot(xvec,normal)*normal
+        vec1 /= np.linalg.norm(vec1)
+
+        vec2 = np.cross(normal, vec1)
+
+        return np.array([ vec1, vec2, normal])
 
 class OperationList(object):
     '''Set of operations that automatically composes appended operations, when possible'''
@@ -416,11 +502,11 @@ def orient(arglist):
 
                 theta = float(options.pop(0))
                 if (opt[2] == 'x' or opt[2] == 'y' or opt[2] == 'z'):
-                    ops.append(Rotate(axis, theta))
+                    ops.append(StaticRotate.axis_angle(axis, theta))
                 elif (opt[2] == 'p' or opt[2] == 'v'):
                     if prepost_trans is not None:
                         ops.append(Translate(prepost_trans[0]))
-                    ops.append(Rotate(axis, theta))
+                    ops.append(StaticRotate.axis_angle(axis, theta))
                     if prepost_trans is not None:
                         ops.append(Translate(prepost_trans[1]))
         elif (opt[1] == 'a'):
@@ -429,64 +515,27 @@ def orient(arglist):
             ja = int(options.pop(0))-1
             ka = int(options.pop(0))-1
 
-            iatom = geom.coordinates[ia, :]
-            jatom = geom.coordinates[ja, :]
-            katom = geom.coordinates[ka, :]
-
             ops.append(Translate(centroid_translater([ia,ja], -1.0)))
-
-            vec1 = jatom[:] - iatom[:]
-            vec1 /= np.linalg.norm(vec1)
-
-            vec2 = katom[:] - iatom[:]
-            vec2 -= np.dot(vec1, vec2) * vec1[:]
-            vec2 /= np.linalg.norm(vec2)
-
-            vec3 = np.cross(vec1, vec2)
-
-            rotation_matrix = np.array([vec1[:], vec2[:], vec3[:]])
-            ops.append(Rotate(rotation_matrix))
+            ops.append(AlignRotate(ia,ja,ka))
         elif (opt[1:] == 'op'):
-            if len(ops) != 0:
-                raise Exception("Orientation to principle axes may not be applied after other transformations")
+            #if len(ops) != 0:
+            #    raise Exception("Orientation to principle axes may not be applied after other transformations")
             ops.append(Translate(com_translater(geom)))
-            geom.computeCOM()
-            inertia = geom.computeInertia()
-            eigs, axes = np.linalg.eigh(inertia)
-            ops.append(Rotate(axes.T))
+            ops.append(InertiaRotate(geom))
         elif (opt[1:] == 'p'):
             if len(ops) != 0:
                 raise Exception("Orientation to fitted plane may not be applied after other transformations")
             iatoms = []
             try:
                 while len(options) > 0 and options[0][0] != "-":
-                    ia = int(options[0])
+                    ia = int(options[0]) - 1
                     iatoms.append(ia)
                     options.pop(0)
             except ValueError:
                 pass
 
-            atoms = np.array([ geom.coordinates[i-1,:] for i in iatoms ])
-            centroid = sum(atoms, 0) / len(iatoms)
-
-            for i in range(atoms.shape[0]):
-                atoms[i,:] -= centroid
-
-            U, s, V = np.linalg.svd(atoms, full_matrices=False)
-
-            normal = V[2,:]
-            normal /= np.linalg.norm(normal)
-
-            xvec = atoms[1,:] - atoms[0,:]
-            vec1 = xvec - np.dot(xvec,normal)*normal
-            vec1 /= np.linalg.norm(vec1)
-
-            vec2 = np.cross(normal, vec1)
-            rotation_matrix = np.array([ vec1, vec2, normal])
-
-            iatoms = [ ia-1 for ia in iatoms ]
             ops.append(Translate(centroid_translater(iatoms, -1.0)))
-            ops.append(Rotate(rotation_matrix))
+            ops.append(PlaneRotate(iatoms))
         else:
             raise Exception("Unknown operation")
 
