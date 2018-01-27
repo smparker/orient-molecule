@@ -260,7 +260,6 @@ class COMTranslate(DynamicTranslate):
 #-------------------------------------------------------------------------------------------#
 # Rotation classes                                                                          #
 #-------------------------------------------------------------------------------------------#
-
 class Rotate(Operation):
     '''Generic rotation'''
     def __init__(self):
@@ -268,7 +267,10 @@ class Rotate(Operation):
 
     def __call__(self, data):
         A = self.rotate_func(data)
-        tmp = np.dot(data, A.transpose())
+        detA = np.linalg.det(A)
+        if detA < 0.0:
+            raise Exception("Determinant of Rotation needs to be 1")
+        tmp = np.dot(data, A.T)
         data[:] = tmp[:]
 
     def iscomposable(self, op):
@@ -286,19 +288,8 @@ class Rotate(Operation):
                 return np.dot(A1, A2)
             self.rotate_func = new_rotate_func
 
-class StaticRotate(Rotate):
-    '''Rotate based on static information'''
-    def __init__(self, rot_matrix):
-        self.rot_matrix = rot_matrix
-
-    def rotate_func(self, data):
-        return self.rot_matrix
-
-    def iscomposable(self, op):
-        return isinstance(op, StaticRotate)
-
-    @classmethod
-    def axis_angle(cls, axis, angle):
+    @staticmethod
+    def axis_angle(axis, angle):
         axis /= np.linalg.norm(axis)
         theta = m.radians(angle)
 
@@ -312,12 +303,38 @@ class StaticRotate(Rotate):
             np.eye(3) + (1.0 - costheta) * \
             np.dot(axis.reshape(3, 1), axis.reshape(1, 3)) + \
             sintheta * Ex
+        return A
 
-        return cls(A)
+class StaticRotate(Rotate):
+    '''Rotate based on static information'''
+    def __init__(self, rot_matrix):
+        self.rot_matrix = rot_matrix
+
+    def rotate_func(self, data):
+        return self.rot_matrix
+
+    def iscomposable(self, op):
+        return isinstance(op, StaticRotate)
+
+    @classmethod
+    def from_axis_angle(cls, axis, angle):
+        return cls(Rotate.axis_angle(axis, angle))
 
 class DynamicRotate(Rotate):
     def iscomposable(self, op):
         return False
+
+class AtomPairRotate(DynamicRotate):
+    def __init__(self, i, j, angle):
+        self.i, self.j = i, j
+        self.angle = angle
+
+    def rotate_func(self, data):
+        iatom = data[self.i,:]
+        jatom = data[self.j,:]
+        axis = jatom - iatom
+
+        return Rotate.axis_angle(axis, self.angle)
 
 class AlignRotate(DynamicRotate):
     def __init__(self, i, j, k):
@@ -358,9 +375,25 @@ class InertiaRotate(DynamicRotate):
         inertial_tensor = np.array([ [ixx, ixy, ixz],
                           [ixy, iyy, iyz],
                           [ixz, iyz, izz]])
-        eig, axes = np.linalg.eigh(inertial_tensor)
+        # negate sign to reverse the sorting of the tensor
+        eig, axes = np.linalg.eigh(-inertial_tensor)
+        axes = axes.T
 
-        return axes.T
+        # adjust sign of axes so third moment moment is positive new in X, and Y axes
+        testcoords = np.dot(data, axes.T) # a little wasteful, but fine for now
+        thirdmoment = np.zeros(3)
+        for i, m in enumerate(self.mass):
+            thirdmoment += testcoords[i,:]**3 * m
+
+        for i in range(2):
+            if thirdmoment[i] < 1.0e-6:
+                axes[i,:] *= -1.0
+
+        # rotation matrix must have determinant of 1
+        if np.linalg.det(axes) < 0.0:
+            axes[2,:] *= -1.0
+
+        return axes
 
 class PlaneRotate(DynamicRotate):
     def __init__(self, atomlist):
@@ -497,56 +530,8 @@ def usage():
     print("    -p <atom1> ... <atomk>         \t -- align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis")
     print("    -op                            \t -- translate to center of mass, orient along principle axes")
 
-def orient(arglist):
-    if len(arglist) == 0:
-        usage()
-        return
-
-    # map from option to number of expected arguments
-    nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
-        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 3, "rv" : 3, "a" : 3,
-        "op" : 0, "p" : "+", "sx" : 0, "sy" : 0, "sz" : 0, "sv" : 3, "sp" : "+" }
-
-    # lets preprocess the options so we let the filename be anywhere in the list
-    options = []
-    filename = None
-    i = 0
-    while True:
-        if i == len(arglist):
-            break
-        op = arglist[i]
-        if op[0] != "-": # maybe a filename
-            if filename is not None:
-                print("multiple filenames found! sticking with %s" % filename)
-            filename = op
-            i += 1
-        else:
-            if op[1:] in nargs:
-                if "+" == nargs[op[1:]]:
-                    narg = 1
-                    try:
-                        while i+narg < len(arglist) and arglist[i+narg][0] != "-":
-                            int(arglist[i+narg])
-                            narg += 1
-                    except ValueError:
-                        pass
-
-                    options.extend(arglist[i:i+narg])
-                    i += narg
-                else:
-                    narg = nargs[op[1:]]+1
-                    options.extend(arglist[i:i+narg])
-                    i += narg
-            else:
-                raise Exception("Unrecognized command: \"%s\" !" % op)
-
-    geoms = read_xyz(filename)
-    geom = geoms[0]
-
-    if len(geoms) > 1:
-        print("Multiple frames found. Operations that require input will only use first frame.", file=sys.stderr)
-
-    # interpret input and build OperationsList
+def consume_arguments(arguments, geom):
+    options = arguments[:]
     ops = OperationList()
 
     while(options):
@@ -573,7 +558,6 @@ def orient(arglist):
                 raise Exception(
                     "Need to specify a rotation option (x, y, z, p, v)")
             axis = np.zeros(3)
-            # Used if I need to translate before and after
             if opt[2] in "xyz":
                 axis["xyz".index(opt[2])] = 1.0
             elif (opt[2] == 'p'):  # atom Pairs
@@ -581,8 +565,6 @@ def orient(arglist):
                 jatom = int(options.pop(0)) - 1
 
                 trans = CentroidTranslate([iatom,jatom], -1.0)
-
-                axis = geom.coordinates[jatom, :] - geom.coordinates[iatom,:]
             elif (opt[2] == 'v'):  # vector
                 axis = np.array(
                     [float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
@@ -590,11 +572,11 @@ def orient(arglist):
                 raise Exception("Unrecognized rotation option")
 
             angle = float(options.pop(0))
-            rotate = StaticRotate.axis_angle(axis, angle)
             if opt[2] in "xyzv":
-                ops.append(rotate)
+                rotate = StaticRotate.from_axis_angle(axis, angle)
             elif opt[2] == "p":
-                ops.append(ShiftedOperation(trans, rotate))
+                rotate = ShiftedOperation(trans, AtomPairRotate(iatom,jatom,angle))
+            ops.append(rotate)
         elif (opt[1] == 's'): # reflections
             if len(opt) != 3:
                 raise Exception("Specify Reflection option (x, y, z, p)")
@@ -651,11 +633,59 @@ def orient(arglist):
         else:
             raise Exception("Unknown operation")
 
+    return ops
+
+def orient(arglist):
+    if len(arglist) == 0:
+        usage()
+        return
+
+    # map from option to number of expected arguments
+    nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
+        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 3, "rv" : 3, "a" : 3,
+        "op" : 0, "p" : "+", "sx" : 0, "sy" : 0, "sz" : 0, "sv" : 3, "sp" : "+" }
+
+    # lets preprocess the options so we let the filename be anywhere in the list
+    options = []
+    filenames = [ ]
+    i = 0
+    while True:
+        if i == len(arglist):
+            break
+        op = arglist[i]
+        if op[0] != "-": # maybe a filename
+            filenames.append(op)
+            i += 1
+        else:
+            if op[1:] in nargs:
+                if "+" == nargs[op[1:]]:
+                    narg = 1
+                    try:
+                        while i+narg < len(arglist) and arglist[i+narg][0] != "-":
+                            int(arglist[i+narg])
+                            narg += 1
+                    except ValueError:
+                        pass
+
+                    options.extend(arglist[i:i+narg])
+                    i += narg
+                else:
+                    narg = nargs[op[1:]]+1
+                    options.extend(arglist[i:i+narg])
+                    i += narg
+            else:
+                raise Exception("Unrecognized command: \"%s\" !" % op)
+
+    geoms = []
+    for fil in filenames:
+        geoms.extend(read_xyz(fil))
+
     for g in geoms:
+        ops = consume_arguments(options, g)
         for op in ops:
-            op(geom.coordinates)
+            op(g.coordinates)
             if DEBUG:
-                geom.print()
+                g.print()
 
     return geoms
 
