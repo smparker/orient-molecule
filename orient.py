@@ -188,20 +188,19 @@ class Operation(object):
         '''compose this op and input op'''
         raise Exception("Improper use of Operation class!")
 
+#-------------------------------------------------------------------------------------------#
+# Translation classes                                                                       #
+#-------------------------------------------------------------------------------------------#
 
 class Translate(Operation):
-    '''Generic translation'''
-    def __init__(self, displacement_func):
-        self.displacement_func = displacement_func
-
     def __call__(self, data):
         displacement = self.displacement_func(data)
         for i in range(data.shape[0]):
             data[i, :] += displacement
 
     def iscomposable(self, op):
+        '''Safety first'''
         return False
-        return isinstance(op, Translate)
 
     def compose(self, trans):
         if not isinstance(trans, Translate):
@@ -212,35 +211,55 @@ class Translate(Operation):
                 return func1(data) + func2(data)
             self.displacement_func = new_disp_func
 
-def simple_translater(vec):
-    def translater(data):
-        return vec
-    return translater
+class StaticTranslate(Translate):
+    def __init__(self, displacement):
+        self.displacement = displacement
 
-def atom_translater(iatom, fac = 1.0):
-    def translater(data):
-        return fac * data[iatom,:]
-    return translater
+    def displacement_func(self, data):
+        return self.displacement
 
-def centroid_translater(atomlist, fac = 1.0):
-    fac = fac / len(atomlist)
-    def translater(data):
+    def iscomposable(self, op):
+        return isinstance(op, StaticTranslate)
+
+class DynamicTranslate(Translate):
+    def iscomposable(self, op):
+        return False
+
+class AtomTranslate(DynamicTranslate):
+    def __init__(self, iatom, fac = 1.0):
+        self.iatom = iatom
+        self.fac = fac
+
+    def displacement_func(self, data):
+        return self.fac * data[self.iatom,:]
+
+class CentroidTranslate(DynamicTranslate):
+    def __init__(self, atomlist, fac = 1.0):
+        self.atomlist = atomlist
+        self.fac = fac / len(atomlist)
+
+    def displacement_func(self, data):
         out = np.zeros(3)
-        for i in atomlist:
+        for i in self.atomlist:
             out[:] += data[i,:]
-        return out * fac
-    return translater
+        return out * self.fac
 
-def com_translater(geom):
-    mass = [ masses[n.lower()] for n in geom.names ]
-    def translater(data):
+class COMTranslate(DynamicTranslate):
+    def __init__(self, geom):
+        self.mass = [ masses[n.lower()] for n in geom.names ]
+        self.totalmass = sum(self.mass)
+
+    def displacement_func(self, data):
         com = np.zeros(3)
-        for i, m in enumerate(mass):
+        for i, m in enumerate(self.mass):
             com += m * data[i,:]
-        com /= sum(mass)
+        com /= self.totalmass
 
         return -com
-    return translater
+
+#-------------------------------------------------------------------------------------------#
+# Rotation classes                                                                          #
+#-------------------------------------------------------------------------------------------#
 
 class Rotate(Operation):
     '''Generic rotation'''
@@ -280,6 +299,7 @@ class StaticRotate(Rotate):
 
     @classmethod
     def axis_angle(cls, axis, angle):
+        axis /= np.linalg.norm(axis)
         theta = m.radians(angle)
 
         costheta = m.cos(theta)
@@ -362,15 +382,91 @@ class PlaneRotate(DynamicRotate):
 
         return np.array([ vec1, vec2, normal])
 
+#-------------------------------------------------------------------------------------------#
+# Reflection classes                                                                        #
+#-------------------------------------------------------------------------------------------#
+
+class Reflect(Operation):
+    '''Reflect across a plane'''
+
+    def __call__(self, data):
+        '''Reflect by decomposing position as position on plane plus
+        vector parallel to normal. Then, change sign on vector
+        parallel to normal'''
+        normal = self.reflect_func(data)
+
+        # do it in a loop first to simplify a bit
+        for i in range(data.shape[0]):
+            a = data[i,:]
+            aparb = np.cross(normal, np.cross(a, normal))
+            aperpb = np.dot(a, normal) * normal
+            data[i,:] = aparb - aperpb
+
+    def iscomposable(self, op):
+        '''Disable composing reflections'''
+        return False
+
+    def compose(self, op):
+        raise Exception("Improper use of Reflect.compose")
+
+class StaticReflect(Reflect):
+    '''Reflect across a statically defined plane'''
+    def __init__(self, normal):
+        # force the normal to have unit norm
+        self.normal = normal / np.linalg.norm(normal)
+
+    def reflect_func(self, data):
+        return self.normal
+
+class PlaneReflect(Reflect):
+    '''Reflect across a plane fitted to a group of atoms
+    Undefine results if used away from origin'''
+    def __init__(self, atomlist):
+        self.atomlist = atomlist
+
+    def reflect_func(self, data):
+        atoms = np.array([ data[i,:] for i in self.atomlist ])
+
+        U, s, V = np.linalg.svd(atoms, full_matrices=False)
+
+        normal = V[2,:]
+        normal /= np.linalg.norm(normal)
+        return normal
+
+#-------------------------------------------------------------------------------------------#
+# Compound classes (for when a molecule needs to be shifted to origin and then returned)    #
+#-------------------------------------------------------------------------------------------#
+class ShiftedOperation(Operation):
+    def __init__(self, shift, operation):
+        self.shift = shift
+        self.operation = operation
+
+    def __call__(self, data):
+        displacement = self.shift.displacement_func(data)
+        unshift = StaticTranslate(-displacement)
+
+        self.shift(data)
+        self.operation(data)
+        unshift(data)
+
+    def iscomposable(self, op):
+        return False
+
+    def compose(self, op):
+        raise Exception("Cannot compose Compound classes")
+
+#-------------------------------------------------------------------------------------------#
+# Main functionality                                                                        #
+#-------------------------------------------------------------------------------------------#
 class OperationList(object):
     '''Set of operations that automatically composes appended operations, when possible'''
     def __init__(self):
         self.operations = []
 
     def append(self, op):
-        if(len(self) == 0):
+        if len(self) == 0:
             self.operations.append(op)
-        elif(self[-1].iscomposable(op)):
+        elif self[-1].iscomposable(op):
             self[-1].compose(op)
         else:
             self.operations.append(op)
@@ -394,6 +490,9 @@ def usage():
     print("    -r[xyz] <angle>                \t -- rotate around given axis")
     print("    -rp <atom> <atom> <angle>      \t -- rotate around axis defined by pair of atoms")
     print("    -rv <x> <y> <z> <angle>        \t -- rotate around defined vector")
+    print("    -s[xyz]                        \t -- reflect across plane defined by chosen axis as normal")
+    print("    -sv                            \t -- reflect across plane defined by specified normal")
+    print("    -sp <a1> <a2> <a3> [...]       \t -- reflect across plane fitted to specified atoms")
     print("    -a <atom1> <atom2> <atom3>     \t -- align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane")
     print("    -p <atom1> ... <atomk>         \t -- align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis")
     print("    -op                            \t -- translate to center of mass, orient along principle axes")
@@ -405,7 +504,8 @@ def orient(arglist):
 
     # map from option to number of expected arguments
     nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
-        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 2, "rv" : 3, "a" : 3, "op" : 0, "p" : "+" }
+        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 3, "rv" : 3, "a" : 3,
+        "op" : 0, "p" : "+", "sx" : 0, "sy" : 0, "sz" : 0, "sv" : 3, "sp" : "+" }
 
     # lets preprocess the options so we let the filename be anywhere in the list
     options = []
@@ -455,76 +555,88 @@ def orient(arglist):
             if (len(opt) != 3):
                 raise Exception(
                     "Need to specify a translation option (x, y, z, a)")
+            trans = None
+            if opt[2] in "xyz":
+                tr = np.zeros(3)
+                tr["xyz".index(opt[2])] = float(options.pop(0))
+                trans = StaticTranslate(tr)
+            elif (opt[2] == 'a'):
+                trans = AtomTranslate(int(options.pop(0))-1, -1.0)
+            elif (opt[2] == 'c'):
+                trans = COMTranslate(geom)
             else:
-                trans = None
-                if (opt[2] == 'x'):
-                    trans = simple_translater(np.array([ float(options.pop(0)), 0.0, 0.0 ]))
-                elif (opt[2] == 'y'):
-                    trans = simple_translater(np.array([ 0.0, float(options.pop(0)), 0.0 ]))
-                elif (opt[2] == 'z'):
-                    trans = simple_translater(np.array([ 0.0, 0.0, float(options.pop(0)) ]))
-                elif (opt[2] == 'a'):
-                    trans = atom_translater(int(options.pop(0))-1, -1.0)
-                elif (opt[2] == 'c'):
-                    trans = com_translater(geom)
-                else:
-                    raise Exception("Unrecognized translation option")
+                raise Exception("Unrecognized translation option")
 
-                ops.append(Translate(trans))
+            ops.append(trans)
         elif (opt[1] == 'r'): # rotations
             if (len(opt) != 3):
                 raise Exception(
                     "Need to specify a rotation option (x, y, z, p, v)")
+            axis = np.zeros(3)
+            # Used if I need to translate before and after
+            if opt[2] in "xyz":
+                axis["xyz".index(opt[2])] = 1.0
+            elif (opt[2] == 'p'):  # atom Pairs
+                iatom = int(options.pop(0)) - 1
+                jatom = int(options.pop(0)) - 1
+
+                trans = CentroidTranslate([iatom,jatom], -1.0)
+
+                axis = geom.coordinates[jatom, :] - geom.coordinates[iatom,:]
+            elif (opt[2] == 'v'):  # vector
+                axis = np.array(
+                    [float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
             else:
-                axis = np.zeros([3])
-                # Used if I need to translate before and after
-                prepost_trans = None
-                if (opt[2] == 'x'):
-                    axis[0] = 1.0
-                elif (opt[2] == 'y'):
-                    axis[1] = 1.0
-                elif (opt[2] == 'z'):
-                    axis[2] = 1.0
-                elif (opt[2] == 'p'):  # atom Pairs
-                    iatom = int(options.pop(0)) - 1
-                    jatom = int(options.pop(0)) - 1
+                raise Exception("Unrecognized rotation option")
 
-                    prepost_trans = (centroid_translater([iatom,jatom], -1.0), centroid_translater([iatom,jatom], 1.0))
+            angle = float(options.pop(0))
+            rotate = StaticRotate.axis_angle(axis, angle)
+            if opt[2] in "xyzv":
+                ops.append(rotate)
+            elif opt[2] == "p":
+                ops.append(ShiftedOperation(trans, rotate))
+        elif (opt[1] == 's'): # reflections
+            if len(opt) != 3:
+                raise Exception("Specify Reflection option (x, y, z, p)")
+            if opt[2] in "xyz":
+                normal = np.zeros(3)
+                normal["xyz".index(opt[2])] = 1.0
 
-                    axis = geom.coordinates[jatom, :] - geom.coordinates[iatom,:]
-                    axis /= np.linalg.norm(axis)
-                elif (opt[2] == 'v'):  # vector
-                    axis = np.array(
-                        [float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
-                    axis /= np.linalg.norm(axis)
-                else:
-                    raise Exception("Unrecognized rotation option")
+                reflect = StaticReflect(normal)
+            elif opt[2] == "v":
+                normal = np.array(
+                    [float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
+                reflect = StaticReflect(normal)
+            elif opt[2] == "p":
+                iatoms = []
+                try:
+                    while len(options) > 0 and options[0][0] != "-":
+                        ia = int(options[0]) - 1
+                        iatoms.append(ia)
+                        options.pop(0)
+                except ValueError:
+                    pass
 
-                theta = float(options.pop(0))
-                if (opt[2] == 'x' or opt[2] == 'y' or opt[2] == 'z'):
-                    ops.append(StaticRotate.axis_angle(axis, theta))
-                elif (opt[2] == 'p' or opt[2] == 'v'):
-                    if prepost_trans is not None:
-                        ops.append(Translate(prepost_trans[0]))
-                    ops.append(StaticRotate.axis_angle(axis, theta))
-                    if prepost_trans is not None:
-                        ops.append(Translate(prepost_trans[1]))
+                trans = CentroidTranslate(iatoms, -1.0)
+                ref = PlaneReflect(iatoms)
+
+                reflect = ShiftedOperation(trans, ref)
+            else:
+                raise Exception("Unrecognized reflection option")
+
+            ops.append(reflect)
         elif (opt[1] == 'a'):
             # align is called with -a <atom> <atom> <atom>
             ia = int(options.pop(0))-1
             ja = int(options.pop(0))-1
             ka = int(options.pop(0))-1
 
-            ops.append(Translate(centroid_translater([ia,ja], -1.0)))
+            ops.append(CentroidTranslate([ia,ja], -1.0))
             ops.append(AlignRotate(ia,ja,ka))
         elif (opt[1:] == 'op'):
-            #if len(ops) != 0:
-            #    raise Exception("Orientation to principle axes may not be applied after other transformations")
-            ops.append(Translate(com_translater(geom)))
+            ops.append(COMTranslate(geom))
             ops.append(InertiaRotate(geom))
         elif (opt[1:] == 'p'):
-            if len(ops) != 0:
-                raise Exception("Orientation to fitted plane may not be applied after other transformations")
             iatoms = []
             try:
                 while len(options) > 0 and options[0][0] != "-":
@@ -534,7 +646,7 @@ def orient(arglist):
             except ValueError:
                 pass
 
-            ops.append(Translate(centroid_translater(iatoms, -1.0)))
+            ops.append(CentroidTranslate(iatoms, -1.0))
             ops.append(PlaneRotate(iatoms))
         else:
             raise Exception("Unknown operation")

@@ -37,6 +37,22 @@ if [ "$DIFF" != "" ]; then
   let nfailed+=1
 fi
 
+# rotatepair test
+$ORIENT -rp 17 18 180 $BASE/test.xyz > $BASE/rotatepair/output.xyz
+DIFF=$(diff -b $BASE/rotatepair/output.xyz $BASE/rotatepair/reference.xyz)
+if [ "$DIFF" != "" ]; then
+  echo 'rotatepair test failed!'
+  let nfailed+=1
+fi
+
+# reflectplane test
+$ORIENT -sp 2 3 4 12 $BASE/test.xyz > $BASE/reflectplane/output.xyz
+DIFF=$(diff -b $BASE/reflectplane/output.xyz $BASE/reflectplane/reference.xyz)
+if [ "$DIFF" != "" ]; then
+  echo 'reflectplane test failed!'
+  let nfailed+=1
+fi
+
 if [ $nfailed -eq 0 ]; then
   echo 'All tests passed!'
 else
