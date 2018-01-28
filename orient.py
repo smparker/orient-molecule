@@ -408,6 +408,14 @@ class NormalRotate(DynamicRotate):
         normal = V[2,:]
         normal /= np.linalg.norm(normal)
 
+        # compute plane of first three atoms to specify the direction
+        v1 = data[self.atomlist[1],:] - data[self.atomlist[0],:]
+        v2 = data[self.atomlist[2],:] - data[self.atomlist[0],:]
+        crossnormal = np.cross(v1, v2)
+
+        if np.dot(normal, crossnormal) < 0.0:
+            normal *= -1.0
+
         return Rotate.axis_angle(normal, self.angle)
 
 class PlaneRotate(DynamicRotate):
