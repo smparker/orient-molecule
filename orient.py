@@ -395,6 +395,21 @@ class InertiaRotate(DynamicRotate):
 
         return axes
 
+class NormalRotate(DynamicRotate):
+    def __init__(self, atomlist, angle):
+        self.atomlist = atomlist
+        self.angle = angle
+
+    def rotate_func(self, data):
+        atoms = np.array([ data[i,:] for i in self.atomlist ])
+
+        U, s, V = np.linalg.svd(atoms, full_matrices=False)
+
+        normal = V[2,:]
+        normal /= np.linalg.norm(normal)
+
+        return Rotate.axis_angle(normal, self.angle)
+
 class PlaneRotate(DynamicRotate):
     def __init__(self, atomlist):
         self.atomlist = atomlist
@@ -427,6 +442,7 @@ class Reflect(Operation):
         vector parallel to normal. Then, change sign on vector
         parallel to normal'''
         normal = self.reflect_func(data)
+        normal /= np.linalg.norm(normal)
 
         # do it in a loop first to simplify a bit
         for i in range(data.shape[0]):
@@ -450,6 +466,15 @@ class StaticReflect(Reflect):
 
     def reflect_func(self, data):
         return self.normal
+
+class BondReflect(Reflect):
+    '''Reflect across normal defined by bond'''
+    def __init__(self, iatom, jatom):
+        self.iatom = iatom
+        self.jatom = jatom
+
+    def reflect_func(self, data):
+        return data[self.jatom,:] - data[self.iatom,:]
 
 class PlaneReflect(Reflect):
     '''Reflect across a plane fitted to a group of atoms
@@ -521,10 +546,13 @@ def usage():
     print("    -ta <atom>                     \t -- translate <atom> to origin")
     print("    -tc                            \t -- translate center of mass to origin")
     print("    -r[xyz] <angle>                \t -- rotate around given axis")
-    print("    -rp <atom> <atom> <angle>      \t -- rotate around axis defined by pair of atoms")
-    print("    -rv <x> <y> <z> <angle>        \t -- rotate around defined vector")
+    print("    -rb <angle> <atom> <atom>      \t -- rotate around axis defined by pair of atoms")
+    print("    -rp <angle> <a1> <a2> [...]    \t -- rotate around normal of plane defined by list of atoms")
+    print("    -rv <angle> <x> <y> <z>        \t -- rotate around defined vector")
+    print("    -rd <angle> <a1> <a2> <a3> []  \t -- rotate bond around midpoint of a diene (vector from bond midpoint in direction of normal)")
     print("    -s[xyz]                        \t -- reflect across plane defined by chosen axis as normal")
     print("    -sv                            \t -- reflect across plane defined by specified normal")
+    print("    -sb <a1> <a2>                  \t -- reflect across a bond")
     print("    -sp <a1> <a2> <a3> [...]       \t -- reflect across plane fitted to specified atoms")
     print("    -a <atom1> <atom2> <atom3>     \t -- align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane")
     print("    -p <atom1> ... <atomk>         \t -- align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis")
@@ -553,29 +581,60 @@ def consume_arguments(arguments, geom):
                 raise Exception("Unrecognized translation option")
 
             ops.append(trans)
-        elif (opt[1] == 'r'): # rotations
-            if (len(opt) != 3):
-                raise Exception(
-                    "Need to specify a rotation option (x, y, z, p, v)")
+        elif opt[1] == 'r': # rotations
+            angle = float(options.pop(0))
+
+            if len(opt) != 3:
+                raise Exception("Need to specify a rotation option (x, y, z, p, v)")
             axis = np.zeros(3)
             if opt[2] in "xyz":
                 axis["xyz".index(opt[2])] = 1.0
-            elif (opt[2] == 'p'):  # atom Pairs
+                rotate = StaticRotate.from_axis_angle(axis, angle)
+            elif opt[2] == 'b':  # atom Pairs
                 iatom = int(options.pop(0)) - 1
                 jatom = int(options.pop(0)) - 1
 
-                trans = CentroidTranslate([iatom,jatom], -1.0)
-            elif (opt[2] == 'v'):  # vector
+                trans = CentroidTranslate([iatom, jatom], -1.0)
+                rot = AtomPairRotate(iatom, jatom, angle)
+
+                rotate = ShiftedOperation(trans, rot)
+            elif opt[2] == 'p':
+                atomlist = []
+                try:
+                    while len(options) > 0 and options[0][0] != "-":
+                        ia = int(options[0]) - 1
+                        atomlist.append(ia)
+                        options.pop(0)
+                except ValueError:
+                    pass
+
+                trans = CentroidTranslate(atomlist, -1.0)
+                rot = NormalRotate(atomlist, angle)
+
+                rotate = ShiftedOperation(trans, rot)
+            elif opt[2] == 'v':  # vector
                 axis = np.array(
                     [float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
+                rotate = StaticRotate.from_axis_angle(axis, angle)
+            elif opt[2] == 'd':
+                atomlist = []
+                atomlist.append(int(options.pop(0)) - 1)
+                atomlist.append(int(options.pop(0)) - 1)
+                try:
+                    while len(options) > 0 and options[0][0] != "-":
+                        ia = int(options[0]) - 1
+                        atomlist.append(ia)
+                        options.pop(0)
+                except ValueError:
+                    pass
+
+                trans = CentroidTranslate(atomlist[0:2], -1.0)
+                rot = NormalRotate(atomlist, angle)
+
+                rotate = ShiftedOperation(trans, rot)
             else:
                 raise Exception("Unrecognized rotation option")
 
-            angle = float(options.pop(0))
-            if opt[2] in "xyzv":
-                rotate = StaticRotate.from_axis_angle(axis, angle)
-            elif opt[2] == "p":
-                rotate = ShiftedOperation(trans, AtomPairRotate(iatom,jatom,angle))
             ops.append(rotate)
         elif (opt[1] == 's'): # reflections
             if len(opt) != 3:
@@ -585,6 +644,14 @@ def consume_arguments(arguments, geom):
                 normal["xyz".index(opt[2])] = 1.0
 
                 reflect = StaticReflect(normal)
+            elif opt[2] == "b":
+                iatom = int(options.pop(0)) - 1
+                jatom = int(options.pop(0)) - 1
+
+                trans = CentroidTranslate([iatom,jatom], -1.0)
+                ref = BondReflect(iatom, jatom)
+
+                reflect = ShiftedOperation(trans, ref)
             elif opt[2] == "v":
                 normal = np.array(
                     [float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
@@ -642,8 +709,9 @@ def orient(arglist):
 
     # map from option to number of expected arguments
     nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
-        "rx" : 1, "ry" : 1, "rz" : 1, "rp": 3, "rv" : 3, "a" : 3,
-        "op" : 0, "p" : "+", "sx" : 0, "sy" : 0, "sz" : 0, "sv" : 3, "sp" : "+" }
+            "rx" : 1, "ry" : 1, "rz" : 1, "rp" : "+", "rb" : 3, "ra": 3, "rp": "+", "rv" : 3, "rd" : "+",
+            "a" : 3, "op" : 0, "p" : "+",
+            "sx" : 0, "sy" : 0, "sz" : 0, "sv" : 3, "sb" : 2, "sp" : "+" }
 
     # lets preprocess the options so we let the filename be anywhere in the list
     options = []
