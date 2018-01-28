@@ -430,13 +430,24 @@ class PlaneRotate(DynamicRotate):
         normal = V[2,:]
         normal /= np.linalg.norm(normal)
 
+        # compute plane of first three atoms to specify the direction
+        v1 = data[self.atomlist[1],:] - data[self.atomlist[0],:]
+        v2 = data[self.atomlist[2],:] - data[self.atomlist[0],:]
+        crossnormal = np.cross(v1, v2)
+
+        if np.dot(normal, crossnormal) < 0.0:
+            normal *= -1.0
+
         xvec = atoms[1,:] - atoms[0,:]
         vec1 = xvec - np.dot(xvec,normal)*normal
         vec1 /= np.linalg.norm(vec1)
 
         vec2 = np.cross(normal, vec1)
 
-        return np.array([ vec1, vec2, normal])
+        A = np.array([ vec1, vec2, normal])
+        if np.linalg.det(A) < 0.0:
+            A[2,:] *= -1.0
+        return A
 
 #-------------------------------------------------------------------------------------------#
 # Reflection classes                                                                        #
