@@ -112,36 +112,15 @@ class Geometry(object):
         if (len(self.com) == 3):
             return self.com
         else:
-            sums = np.zeros(3)
-            totMass = 0.0
-            for i, name in enumerate(self.names):
-                sums[:] += masses[name.lower()]*self.coordinates[i, :]
-                totMass += masses[name.lower()]
-
-            sums[:] /= totMass
-
-            self.com = sums
-
-            return sums
+            self.com = np.dot(self.mass, self.coordinates) / np.sum(self.mass)
 
     def computeInertia(self):
         '''Returns the moment of inertia tensor'''
         com = self.computeCOM()
-        ixx = ixy = ixz = iyy = iyz = izz = 0.0
-        for i, name in enumerate(self.names):
-            x, y, z = self.coordinates[i,:] - com
-            mass = masses[name.lower()]
+        data = self.coordinates - com
 
-            ixx += (y**2 + z**2)*mass
-            ixy -= (x*y)*mass
-            ixz -= (x*z)*mass
-            iyy += (x**2 + z**2)*mass
-            iyz -= (y*z)*mass
-            izz += (x**2 + y**2)*mass
-
-        return np.array([ [ixx, ixy, ixz],
-                          [ixy, iyy, iyz],
-                          [ixz, iyz, izz]])
+        inertial_tensor = -np.einsum("ax,a,ay->xy", data, self.mass, data)
+        return inertial_tensor
 
 def read_xyz(filename):
     '''reads xyz file and returns Geometry object'''
@@ -195,8 +174,7 @@ class Operation(object):
 class Translate(Operation):
     def __call__(self, data):
         displacement = self.displacement_func(data)
-        for i in range(data.shape[0]):
-            data[i, :] += displacement
+        data += np.repeat(displacement.reshape(1,3), data.shape[0], axis=0)
 
     def iscomposable(self, op):
         '''Safety first'''
@@ -239,10 +217,7 @@ class CentroidTranslate(DynamicTranslate):
         self.fac = fac / len(atomlist)
 
     def displacement_func(self, data):
-        out = np.zeros(3)
-        for i in self.atomlist:
-            out[:] += data[i,:]
-        return out * self.fac
+        return np.sum(data[self.atomlist,:], axis=0) * self.fac
 
 class COMTranslate(DynamicTranslate):
     def __init__(self, geom):
@@ -250,12 +225,7 @@ class COMTranslate(DynamicTranslate):
         self.totalmass = sum(self.mass)
 
     def displacement_func(self, data):
-        com = np.zeros(3)
-        for i, m in enumerate(self.mass):
-            com += m * data[i,:]
-        com /= self.totalmass
-
-        return -com
+        return -np.dot(self.mass, data) / np.sum(self.mass)
 
 #-------------------------------------------------------------------------------------------#
 # Rotation classes                                                                          #
@@ -361,29 +331,14 @@ class InertiaRotate(DynamicRotate):
         self.mass = [ masses[n.lower()] for n in geom.names ]
 
     def rotate_func(self, data):
-        ixx = ixy = ixz = iyy = iyz = izz = 0.0
-        for i, m in enumerate(self.mass):
-            x, y, z = data[i,:]
-
-            ixx += (y**2 + z**2)*m
-            ixy -= (x*y)*m
-            ixz -= (x*z)*m
-            iyy += (x**2 + z**2)*m
-            iyz -= (y*z)*m
-            izz += (x**2 + y**2)*m
-
-        inertial_tensor = np.array([ [ixx, ixy, ixz],
-                          [ixy, iyy, iyz],
-                          [ixz, iyz, izz]])
+        inertial_tensor = -np.einsum("ax,a,ay->xy", data, self.mass, data)
         # negate sign to reverse the sorting of the tensor
         eig, axes = np.linalg.eigh(-inertial_tensor)
         axes = axes.T
 
         # adjust sign of axes so third moment moment is positive new in X, and Y axes
         testcoords = np.dot(data, axes.T) # a little wasteful, but fine for now
-        thirdmoment = np.zeros(3)
-        for i, m in enumerate(self.mass):
-            thirdmoment += testcoords[i,:]**3 * m
+        thirdmoment = np.einsum("ax,a->x", testcoords**3, self.mass)
 
         for i in range(2):
             if thirdmoment[i] < 1.0e-6:
@@ -463,12 +418,9 @@ class Reflect(Operation):
         normal = self.reflect_func(data)
         normal /= np.linalg.norm(normal)
 
-        # do it in a loop first to simplify a bit
-        for i in range(data.shape[0]):
-            a = data[i,:]
-            aparb = np.cross(normal, np.cross(a, normal))
-            aperpb = np.dot(a, normal) * normal
-            data[i,:] = aparb - aperpb
+        # implemented like a householder reflection
+        proj = np.dot(data, normal)
+        data -= 2.0 * np.dot(proj.reshape(len(proj), 1), normal.reshape(1, 3))
 
     def iscomposable(self, op):
         '''Disable composing reflections'''
