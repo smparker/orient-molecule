@@ -70,6 +70,14 @@ if [ "$DIFF" != "" ]; then
   let nfailed+=1
 fi
 
+# rotate around arbitrary vector
+$ORIENT -rv 45 0 1 1 $BASE/5vu.xyz > $BASE/rv/output.xyz
+DIFF=$(diff -b $BASE/rv/output.xyz $BASE/rv/reference.xyz 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'rotate vector test failed!'
+  let nfailed+=1
+fi
+
 if [ $nfailed -eq 0 ]; then
   echo 'All tests passed!'
 else

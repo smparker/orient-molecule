@@ -680,7 +680,7 @@ def orient(arglist):
 
     # map from option to number of expected arguments
     nargs = { "tc" : 0, "tx" : 1, "ty" : 1, "tz" : 1, "ta" : 1,
-            "rx" : 1, "ry" : 1, "rz" : 1, "rp" : "+", "rb" : 3, "ra": 3, "rp": "+", "rv" : 3, "rd" : "+",
+            "rx" : 1, "ry" : 1, "rz" : 1, "rp" : "+", "rb" : 3, "ra": 3, "rp": "+", "rv" : 4, "rd" : "+",
             "a" : 3, "op" : 0, "p" : "+",
             "sx" : 0, "sy" : 0, "sz" : 0, "sv" : 3, "sb" : 2, "sp" : "+" }
 
