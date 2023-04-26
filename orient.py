@@ -153,6 +153,17 @@ masses = {
 }
 # yapf: enable
 
+# list of all elements, sorted by atomic number
+elements = [
+    'x', 'h', 'he', 'li', 'be', 'b', 'c', 'n', 'o', 'f', 'ne', 'na', 'mg', 'al', 'si', 'p', 's', 'cl', 'ar', 'k', 'ca',
+    'sc', 'ti', 'v', 'cr', 'mn', 'fe', 'co', 'ni', 'cu', 'zn', 'ga', 'ge', 'as', 'se', 'br', 'kr', 'rb', 'sr', 'y',
+    'zr', 'nb', 'mo', 'tc', 'ru', 'rh', 'pd', 'ag', 'cd', 'in', 'sn', 'sb', 'te', 'i', 'xe', 'cs', 'ba', 'la', 'ce',
+    'pr', 'nd', 'pm', 'sm', 'eu', 'gd', 'tb', 'dy', 'ho', 'er', 'tm', 'yb', 'lu', 'hf', 'ta', 'w', 're', 'os', 'ir',
+    'pt', 'au', 'hg', 'tl', 'pb', 'bi', 'po', 'at', 'rn', 'fr', 'ra', 'ac', 'th', 'pa', 'u', 'np', 'pu', 'am', 'cm',
+    'bk', 'cf', 'es', 'fm', 'md', 'no', 'lr', 'rf', 'db', 'sg', 'bh', 'hs', 'mt', 'ds', 'rg', 'cn', 'nh', 'fl', 'mc',
+    'lv', 'ts', 'og'
+]
+
 
 class Geometry_:
     '''Stores all of the data in an xyz file'''
@@ -165,7 +176,6 @@ class Geometry_:
 
         self.origin = None
         self.axes = None
-
 
     def compute_center_of_mass(self):
         '''
@@ -182,6 +192,7 @@ class Geometry_:
         inertial_tensor = np.einsum("ax,a,ay->xy", data, self.mass, data)
         inertial_tensor *= -1
         return inertial_tensor
+
 
 class GeometryXYZ(Geometry_):
     """XYZ files"""
@@ -206,27 +217,64 @@ class GeometryXYZ(Geometry_):
 
         for i in range(self.natoms):
             extra = " ".join([f"{x:16.10f}" for x in self.extras[i]]) if self.extras else ""
-            x, y, z = self.coordinates[i,:]
+            x, y, z = self.coordinates[i, :]
             print(f"{self.names[i]:>3s} {x:16.10f} {y:16.10f} {z:16.10f} {extra:s}")
+
 
 class GeometryCube(Geometry_):
     """Cube file"""
 
-    def __init__(self, names, coordinates, origin, axes, cubic_data, comment=""):
-        self.names = names
+    def __init__(self,
+                 names,
+                 atomnumber,
+                 coordinates,
+                 origin,
+                 resolutions,
+                 axes,
+                 volume_data,
+                 comments=["", ""],
+                 expect_dset=False):
+        self.atomnumber = atomnumber
+        self.charges = charges
         self.coordinates = np.array(coordinates)
         self.natoms = coordinates.shape[0]
         self.origin = np.array(origin)
+        self.resolutions = resolutions
         self.axes = np.array(axes)
-        self.cubic_data = cubic_data
-        self.comment = comment
+        self.volume_data = volume_data
+        self.comments = comments
 
-        self.mass = [masses[n.lower()] for n in names]
+        self.mass = [masses[elements[i]] for i in atomnumber]
 
     def print(self):
-        """print in cube format""" #TODO
-        print(f"{self.natoms:d}")
-        print(self.comment)
+        """print in cube format"""
+        # 1st and 2nd lines are comments
+        for c in self.comments:
+            print(c)
+
+        # 3rd line is <natoms> <origin x> <origin y> <origin z>
+        natoms = self.natoms
+        if self.expect_dset:
+            natoms *= -1
+        origin = self.origin / ang2bohr
+        print(f"{natoms:d} {origin[0]:16.10f} {origin[1]:16.10f} {origin[2]:16.10f}")
+
+        # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
+        for i in range(3):
+            res = self.resolutions[i]
+            ax_i = self.axes[i, :]
+            print(f"{res:6s} {axis[0]:16.10f} {axis[1]:16.10f} {axis[2]:16.10f}")
+
+        # next natoms lines define the molecule as
+        # <atom number> <charge> <x> <y> <z>
+        for i in range(self.natoms):
+            atom = self.atomnumber[i]
+            xyz = self.coordinates[i, :] / bohr2ang
+            print(f"{atomnumber:6d} {self.charges[i]:16.10f} {xyz[0]:16.10f} {xyz[1]:16.10f} {xyz[2]:16.10f}")
+
+        for v in self.volume_data:
+            print(v)
+
 
 def read_xyz(filename):
     '''reads xyz file and returns GeometryXYZ object'''
@@ -246,7 +294,7 @@ def read_xyz(filename):
                 line = f.readline()
                 data = line.split()
                 name, x, y, z = data[0:4]
-                extra = [ float(d) for d in data[4:] ]
+                extra = [float(d) for d in data[4:]]
 
                 names.append(name.capitalize())
                 coords.append([float(x), float(y), float(z)])
@@ -259,18 +307,72 @@ def read_xyz(filename):
 
     return out
 
+
 def read_cube(filename):
     """reads cube format and returns GeometryCube"""
     out = []
 
-    # read cube format!
+    with open(filename, "r") as f:
+        # 1st and 2nd lines are comments
+        comments = [f.readline().rstrip(), f.readline().rstrip()]
+
+        # 3rd line is <natoms> <origin x> <origin y> <origin z>
+        line = f.readline()
+        natoms, origin = line.split()[0:4]
+        natoms = int(natoms)
+        expect_dset = natoms < 0
+        natoms = abs(natoms)
+        origin = np.array([float(x) for x in origin]) * bohr2ang
+
+        # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
+        resolutions = []
+        axes = np.zeros([3, 3])
+        for i in range(3):
+            res, axes_i = f.readline().split()
+            resolutions.append(res)
+            axes[i, :] = np.array([float(x) for x in line.split()])
+
+        coords = np.zeros([natoms, 3])
+        atomnumber = []
+        charges = []
+        # next natoms lines define the molecule as
+        # <atom number> <charge> <x> <y> <z>
+        for i in range(natoms):
+            atom, chg, xyz = f.readline().split()
+            atomnumber.append(int(atom))
+            charges.append(chg)
+
+            xyz = np.array([float(x) for x in xyz]) * bohr2ang
+            coords[i, :] = xyz
+
+        volume_lines = []
+        # the rest is the volume data
+        while True:
+            line = f.readline()
+            if line == "":
+                break
+            volume_lines.append(line.rstrip())
+
+        cube = GeometryCube(atomnumber,
+                            charges,
+                            coords,
+                            origin,
+                            resolutions,
+                            axes,
+                            volume_lines,
+                            comments,
+                            expect_dset=expect_dset)
+        out.append(cube)
+
     return out
+
 
 def read_file(filename):
     if filename.endswith(".xyz"):
         return read_xyz(filename)
     elif filename.endswith(".cub") or filename.endswith(".cube"):
         return read_cube(filename)
+
 
 class Operation:
     '''Base class for generic operation'''
@@ -322,6 +424,7 @@ class StaticTranslate(Translate):
 
         self.displacement += trans.displacement
 
+
 class AtomTranslate(Translate):
     """Translate so specified atom is at the origin"""
 
@@ -372,7 +475,6 @@ class Rotate(Operation):
         """dummy rotate function"""
         raise NotImplementedError
 
-
     @staticmethod
     def axis_angle(axis, angle):
         axis /= np.linalg.norm(axis)
@@ -412,8 +514,10 @@ class StaticRotate(Rotate):
         """make rotation matrix from axis and angle"""
         return cls(Rotate.axis_angle(axis, angle))
 
+
 class AtomPairRotate(Rotate):
     """Rotate around axis defined by vector between two atoms"""
+
     def __init__(self, i, j, angle):
         self.i, self.j = i, j
         self.angle = angle
@@ -426,8 +530,10 @@ class AtomPairRotate(Rotate):
 
         return Rotate.axis_angle(axis, self.angle)
 
+
 class AlignRotate(Rotate):
     """Rotate so that the vector between two atoms is aligned along xyz"""
+
     def __init__(self, i, j, k):
         self.i, self.j, self.k = i, j, k
 
@@ -451,6 +557,7 @@ class AlignRotate(Rotate):
 
 class InertiaRotate(Rotate):
     """Rotate so that the moments of inertia are aligned along xyz"""
+
     def __init__(self, geom):
         self.mass = geom.mass
 
@@ -479,6 +586,7 @@ class InertiaRotate(Rotate):
 
 class NormalRotate(Rotate):
     """Rotate about plane defined by a list of atoms"""
+
     def __init__(self, atomlist, angle):
         self.atomlist = atomlist
         self.angle = angle
@@ -505,6 +613,7 @@ class NormalRotate(Rotate):
 
 class PlaneRotate(Rotate):
     """Rotate about plane defined by a triple of atoms"""
+
     def __init__(self, atomlist):
         self.atomlist = atomlist
 
