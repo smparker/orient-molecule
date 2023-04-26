@@ -154,26 +154,18 @@ masses = {
 # yapf: enable
 
 
-class Geometry:
+class Geometry_:
     '''Stores all of the data in an xyz file'''
 
-    def __init__(self, names, coordinates, comment="", extras=None):
-        self.names = names
-        self.coordinates = coordinates
-        self.natoms = coordinates.shape[0]
-        self.comment = comment
-        self.extras = extras
-        self.mass = [masses[n.lower()] for n in names]
+    def __init__(self):
+        self.coordinates = None
+        self.natoms = None
+        self.comment = None
+        self.mass = None
 
-    def print(self):
-        """print in xyz format"""
-        print(f"{self.natoms:d}")
-        print(self.comment)
+        self.origin = None
+        self.axes = None
 
-        for i in range(self.natoms):
-            extra = " ".join([f"{x:16.10f}" for x in self.extras[i]]) if self.extras else ""
-            x, y, z = self.coordinates[i,:]
-            print(f"{self.names[i]:>3s} {x:16.10f} {y:16.10f} {z:16.10f} {extra:s}")
 
     def compute_center_of_mass(self):
         '''
@@ -191,9 +183,53 @@ class Geometry:
         inertial_tensor *= -1
         return inertial_tensor
 
+class GeometryXYZ(Geometry_):
+    """XYZ files"""
+
+    def __init__(self, names, coordinates, comment="", extras=None):
+        super().__init__()
+
+        self.names = names
+        self.coordinates = coordinates
+        self.natoms = coordinates.shape[0]
+        self.comment = comment
+        self.extras = extras
+        self.mass = [masses[n.lower()] for n in names]
+
+        self.origin = None
+        self.axes = None
+
+    def print(self):
+        """print in xyz format"""
+        print(f"{self.natoms:d}")
+        print(self.comment)
+
+        for i in range(self.natoms):
+            extra = " ".join([f"{x:16.10f}" for x in self.extras[i]]) if self.extras else ""
+            x, y, z = self.coordinates[i,:]
+            print(f"{self.names[i]:>3s} {x:16.10f} {y:16.10f} {z:16.10f} {extra:s}")
+
+class GeometryCube(Geometry_):
+    """Cube file"""
+
+    def __init__(self, names, coordinates, origin, axes, cubic_data, comment=""):
+        self.names = names
+        self.coordinates = np.array(coordinates)
+        self.natoms = coordinates.shape[0]
+        self.origin = np.array(origin)
+        self.axes = np.array(axes)
+        self.cubic_data = cubic_data
+        self.comment = comment
+
+        self.mass = [masses[n.lower()] for n in names]
+
+    def print(self):
+        """print in cube format""" #TODO
+        print(f"{self.natoms:d}")
+        print(self.comment)
 
 def read_xyz(filename):
-    '''reads xyz file and returns Geometry object'''
+    '''reads xyz file and returns GeometryXYZ object'''
     out = []
 
     with open(filename, "r") as f:
@@ -217,12 +253,24 @@ def read_xyz(filename):
                 if extra:
                     extras.append(extra)
 
-            out.append(Geometry(names, np.array(coords), comment=comment, extras=extras))
+            out.append(GeometryXYZ(names, np.array(coords), comment=comment, extras=extras))
 
             line = f.readline()
 
     return out
 
+def read_cube(filename):
+    """reads cube format and returns GeometryCube"""
+    out = []
+
+    # read cube format!
+    return out
+
+def read_file(filename):
+    if filename.endswith(".xyz"):
+        return read_xyz(filename)
+    elif filename.endswith(".cub") or filename.endswith(".cube"):
+        return read_cube(filename)
 
 class Operation:
     '''Base class for generic operation'''
@@ -237,7 +285,7 @@ class Operation:
 
     def compose(self, op):
         '''compose this op and input op'''
-        raise Exception("Improper use of Operation class!")
+        raise RuntimeError("This operation not composable")
 
 
 #-------------------------------------------------------------------------------------------#
@@ -256,17 +304,6 @@ class Translate(Operation):
         """dummy displacement function"""
         raise NotImplementedError
 
-    def compose(self, trans):
-        if not isinstance(trans, Translate):
-            raise Exception("Improper use of Translate.compose()!")
-
-        func1, func2 = self.displacement_func, trans.displacement_func
-
-        def new_disp_func(data):
-            return func1(data) + func2(data)
-
-        self.displacement_func = new_disp_func
-
 
 class StaticTranslate(Translate):
     """Translate with fully specified information"""
@@ -279,6 +316,11 @@ class StaticTranslate(Translate):
 
     def iscomposable(self, op):
         return isinstance(op, StaticTranslate)
+
+    def compose(self, trans):
+        assert self.iscomposable(trans)
+
+        self.displacement += trans.displacement
 
 class AtomTranslate(Translate):
     """Translate so specified atom is at the origin"""
@@ -330,18 +372,6 @@ class Rotate(Operation):
         """dummy rotate function"""
         raise NotImplementedError
 
-    def compose(self, rot):
-        if not isinstance(rot, Rotate):
-            raise Exception("Improper use of Rotate.compose()")
-
-        func1, func2 = self.rotate_func, rot.rotate_func
-
-        def new_rotate_func(data):
-            A1 = func1(data)
-            A2 = func2(data)
-            return np.dot(A1, A2)
-
-        self.rotate_func = new_rotate_func
 
     @staticmethod
     def axis_angle(axis, angle):
@@ -371,6 +401,11 @@ class StaticRotate(Rotate):
 
     def iscomposable(self, op):
         return isinstance(op, StaticRotate)
+
+    def compose(self, rot):
+        assert self.iscomposable(rot)
+
+        self.rot_matrix = np.dot(self.rot_matrix, rot.rot_matrix)
 
     @classmethod
     def from_axis_angle(cls, axis, angle):
@@ -525,9 +560,6 @@ class Reflect(Operation):
         """dummy reflect function"""
         raise NotImplementedError
 
-    def compose(self, op):
-        raise Exception("Improper use of Reflect.compose")
-
 
 class StaticReflect(Reflect):
     '''Reflect across a statically defined plane'''
@@ -585,9 +617,6 @@ class ShiftedOperation(Operation):
         self.shift(data)
         self.operation(data)
         unshift(data)
-
-    def compose(self, op):
-        raise Exception("Cannot compose Compound classes")
 
 
 #-------------------------------------------------------------------------------------------#
@@ -853,7 +882,7 @@ def orient(arglist):
 
     geoms = []
     for fil in filenames:
-        geoms.extend(read_xyz(fil))
+        geoms.extend(read_file(fil))
 
     for g in geoms:
         ops = consume_arguments(options, g)
