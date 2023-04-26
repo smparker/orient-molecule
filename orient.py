@@ -2,7 +2,7 @@
 
 #
 #  Orient molecule: simple commandline xyz manipulation
-#  Copyright (C) 2013-2017  Shane M. Parker <smparker@uci.edu>
+#  Copyright (C) 2013-2023  Shane M. Parker <shane.parker@case.edu>
 
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -162,7 +162,6 @@ class Geometry(object):
         self.natoms = coordinates.shape[0]
         self.comment = comment
         self.extras = extras
-        self.com = np.array([])
 
     def print(self):
         print("%s" % self.natoms)
@@ -177,10 +176,8 @@ class Geometry(object):
         '''
         Returns the center of mass of the geometry.
         '''
-        if (len(self.com) == 3):
-            return self.com
-        else:
-            self.com = np.dot(self.mass, self.coordinates) / np.sum(self.mass)
+        com = np.dot(self.mass, self.coordinates) / np.sum(self.mass)
+        return com
 
     def computeInertia(self):
         '''Returns the moment of inertia tensor'''
