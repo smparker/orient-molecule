@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""orient.py: A simple commandline xyz manipulation tool."""
 
 #
 #  Orient molecule: simple commandline xyz manipulation
@@ -91,7 +92,7 @@ masses = {
     'ce': 139.905,
     'pr': 140.908,
     'nd': 141.907,
-    'pm': 145.914, # no info about isotope abundance (mean of 145Pm and 147Pm)
+    'pm': 145.914,
     'sm': 151.920,
     'eu': 152.921,
     'gd': 157.924,
@@ -114,21 +115,21 @@ masses = {
     'tl': 204.974,
     'pb': 207.976,
     'bi': 208.980,
-    'po': 209.483, # no info about isotope abundance (mean of 209Po and 210Po)
-    'at': 210.487, # no info about isotope abundance (mean of 210At and 211At)
-    'rn': 217.673, # no info about isotope abundance (mean of 211Rn, 220Rn, and 222Rn)
+    'po': 209.483,
+    'at': 210.487,
+    'rn': 217.673,
     'fr': 223.020,
-    'ra': 225.274, # no info about isotope abundance (mean of 223Ra, 224Ra, 226Ra, and 228Ra)
+    'ra': 225.274,
     'ac': 227.028,
-    'th': 231.036, # no info about isotope abundance (mean of 230Th and 232Th)
+    'th': 231.036,
     'pa': 231.036,
     'u' : 238.051,
-    'np': 236.547, # no info about isotope abundance (mean of 236Np and 237Np)
-    'pu': 240.723, # no info about isotope abundance (mean of 238Pu, 239Pu, 240Pu, 241Pu, 242Pu, and 244Pu)
-    'am': 242.059, # no info about isotope abundance (mean of 242Am and 243Am)
-    'cm': 245.567, # no info about isotope abundance (mean of 243Cm, 244Cm, 245Cm, 246Cm, 247Cm, and 248Cm)
-    'bk': 248.073, # no info about isotope abundance (mean of 247Bk and 249Bk)
-    'cf': 250.578, # no info about isotope abundance (mean of 249Cf, 250Cf, 251Cf, and 252Cf)
+    'np': 236.547,
+    'pu': 240.723,
+    'am': 242.059,
+    'cm': 245.567,
+    'bk': 248.073,
+    'cf': 250.578,
     'es': 252.083,
     'fm': 257.095,
     'md': 259.101,
@@ -153,7 +154,7 @@ masses = {
 # yapf: enable
 
 
-class Geometry(object):
+class Geometry:
     '''Stores all of the data in an xyz file'''
 
     def __init__(self, names, coordinates, comment="", extras=None):
@@ -162,29 +163,32 @@ class Geometry(object):
         self.natoms = coordinates.shape[0]
         self.comment = comment
         self.extras = extras
+        self.mass = [masses[n.lower()] for n in names]
 
     def print(self):
-        print("%s" % self.natoms)
-        print("%s" % self.comment)
+        """print in xyz format"""
+        print(f"{self.natoms:d}")
+        print(self.comment)
 
         for i in range(self.natoms):
-            extra = "   ".join(["%14.10f" % float(x) for x in self.extras[i]]) if self.extras else ""
-            print("%3s   %14.10f   %14.10f   %14.10f   %s" %
-                  (self.names[i], self.coordinates[i, 0], self.coordinates[i, 1], self.coordinates[i, 2], extra))
+            extra = " ".join([f"{x:16.10f}" for x in self.extras[i]]) if self.extras else ""
+            x, y, z = self.coordinates[i,:]
+            print(f"{self.names[i]:>3s} {x:16.10f} {y:16.10f} {z:16.10f} {extra:s}")
 
-    def computeCOM(self):
+    def compute_center_of_mass(self):
         '''
         Returns the center of mass of the geometry.
         '''
         com = np.dot(self.mass, self.coordinates) / np.sum(self.mass)
         return com
 
-    def computeInertia(self):
+    def compute_inertia(self):
         '''Returns the moment of inertia tensor'''
-        com = self.computeCOM()
+        com = self.compute_center_of_mass()
         data = self.coordinates - com
 
-        inertial_tensor = -np.einsum("ax,a,ay->xy", data, self.mass, data)
+        inertial_tensor = np.einsum("ax,a,ay->xy", data, self.mass, data)
+        inertial_tensor *= -1
         return inertial_tensor
 
 
@@ -206,7 +210,7 @@ def read_xyz(filename):
                 line = f.readline()
                 data = line.split()
                 name, x, y, z = data[0:4]
-                extra = data[4:]
+                extra = [ float(d) for d in data[4:] ]
 
                 names.append(name.capitalize())
                 coords.append([float(x), float(y), float(z)])
@@ -220,7 +224,7 @@ def read_xyz(filename):
     return out
 
 
-class Operation(object):
+class Operation:
     '''Base class for generic operation'''
 
     def __call__(self, data):
@@ -228,8 +232,8 @@ class Operation(object):
         raise Exception("Improper use of Operation class!")
 
     def iscomposable(self, op):
-        '''return true if this op can composed with input op'''
-        raise Exception("Improper use of Operation class!")
+        '''do not compose any objects by default'''
+        return False
 
     def compose(self, op):
         '''compose this op and input op'''
@@ -242,28 +246,30 @@ class Operation(object):
 
 
 class Translate(Operation):
+    """Base class for translation operations"""
 
     def __call__(self, data):
         displacement = self.displacement_func(data)
         data += np.repeat(displacement.reshape(1, 3), data.shape[0], axis=0)
 
-    def iscomposable(self, op):
-        '''Safety first'''
-        return False
+    def displacement_func(self, data):
+        """dummy displacement function"""
+        raise NotImplementedError
 
     def compose(self, trans):
         if not isinstance(trans, Translate):
             raise Exception("Improper use of Translate.compose()!")
-        else:
-            func1, func2 = self.displacement_func, trans.displacement_func
 
-            def new_disp_func(data):
-                return func1(data) + func2(data)
+        func1, func2 = self.displacement_func, trans.displacement_func
 
-            self.displacement_func = new_disp_func
+        def new_disp_func(data):
+            return func1(data) + func2(data)
+
+        self.displacement_func = new_disp_func
 
 
 class StaticTranslate(Translate):
+    """Translate with fully specified information"""
 
     def __init__(self, displacement):
         self.displacement = displacement
@@ -274,14 +280,8 @@ class StaticTranslate(Translate):
     def iscomposable(self, op):
         return isinstance(op, StaticTranslate)
 
-
-class DynamicTranslate(Translate):
-
-    def iscomposable(self, op):
-        return False
-
-
-class AtomTranslate(DynamicTranslate):
+class AtomTranslate(Translate):
+    """Translate so specified atom is at the origin"""
 
     def __init__(self, iatom, fac=1.0):
         self.iatom = iatom
@@ -291,7 +291,8 @@ class AtomTranslate(DynamicTranslate):
         return self.fac * data[self.iatom, :]
 
 
-class CentroidTranslate(DynamicTranslate):
+class CentroidTranslate(Translate):
+    """Translate so the weighted average of atoms is at the origin"""
 
     def __init__(self, atomlist, fac=1.0):
         self.atomlist = atomlist
@@ -301,11 +302,11 @@ class CentroidTranslate(DynamicTranslate):
         return np.sum(data[self.atomlist, :], axis=0) * self.fac
 
 
-class COMTranslate(DynamicTranslate):
+class COMTranslate(Translate):
+    """Translate so molecule center of mass is at the origin"""
 
     def __init__(self, geom):
-        self.mass = [masses[n.lower()] for n in geom.names]
-        self.totalmass = sum(self.mass)
+        self.mass = geom.mass
 
     def displacement_func(self, data):
         return -np.dot(self.mass, data) / np.sum(self.mass)
@@ -317,9 +318,6 @@ class COMTranslate(DynamicTranslate):
 class Rotate(Operation):
     '''Generic rotation'''
 
-    def __init__(self):
-        self.rotate_func = None
-
     def __call__(self, data):
         A = self.rotate_func(data)
         detA = np.linalg.det(A)
@@ -328,22 +326,22 @@ class Rotate(Operation):
         tmp = np.dot(data, A.T)
         data[:] = tmp[:]
 
-    def iscomposable(self, op):
-        '''Safety first'''
-        return False
+    def rotate_func(self, data):
+        """dummy rotate function"""
+        raise NotImplementedError
 
     def compose(self, rot):
         if not isinstance(rot, Rotate):
             raise Exception("Improper use of Rotate.compose()")
-        else:
-            func1, func2 = self.rotate_func, rot.rotate_func
 
-            def new_rotate_func(data):
-                A1 = func1(data)
-                A2 = func2(data)
-                return np.dot(A1, A2)
+        func1, func2 = self.rotate_func, rot.rotate_func
 
-            self.rotate_func = new_rotate_func
+        def new_rotate_func(data):
+            A1 = func1(data)
+            A2 = func2(data)
+            return np.dot(A1, A2)
+
+        self.rotate_func = new_rotate_func
 
     @staticmethod
     def axis_angle(axis, angle):
@@ -376,35 +374,30 @@ class StaticRotate(Rotate):
 
     @classmethod
     def from_axis_angle(cls, axis, angle):
+        """make rotation matrix from axis and angle"""
         return cls(Rotate.axis_angle(axis, angle))
 
-
-class DynamicRotate(Rotate):
-
-    def iscomposable(self, op):
-        return False
-
-
-class AtomPairRotate(DynamicRotate):
-
+class AtomPairRotate(Rotate):
+    """Rotate around axis defined by vector between two atoms"""
     def __init__(self, i, j, angle):
         self.i, self.j = i, j
         self.angle = angle
 
     def rotate_func(self, data):
+        """compute rotation matrix from input data"""
         iatom = data[self.i, :]
         jatom = data[self.j, :]
         axis = jatom - iatom
 
         return Rotate.axis_angle(axis, self.angle)
 
-
-class AlignRotate(DynamicRotate):
-
+class AlignRotate(Rotate):
+    """Rotate so that the vector between two atoms is aligned along xyz"""
     def __init__(self, i, j, k):
         self.i, self.j, self.k = i, j, k
 
     def rotate_func(self, data):
+        """compute rotation matrix from input data"""
         iatom = data[self.i, :]
         jatom = data[self.j, :]
         katom = data[self.k, :]
@@ -421,13 +414,15 @@ class AlignRotate(DynamicRotate):
         return np.array([vec1[:], vec2[:], vec3[:]])
 
 
-class InertiaRotate(DynamicRotate):
-
+class InertiaRotate(Rotate):
+    """Rotate so that the moments of inertia are aligned along xyz"""
     def __init__(self, geom):
-        self.mass = [masses[n.lower()] for n in geom.names]
+        self.mass = geom.mass
 
     def rotate_func(self, data):
-        inertial_tensor = -np.einsum("ax,a,ay->xy", data, self.mass, data)
+        """compute rotation matrix from input data"""
+        inertial_tensor = np.einsum("ax,a,ay->xy", data, self.mass, data)
+        inertial_tensor *= -1
         # negate sign to reverse the sorting of the tensor
         eig, axes = np.linalg.eigh(-inertial_tensor)
         axes = axes.T
@@ -447,13 +442,14 @@ class InertiaRotate(DynamicRotate):
         return axes
 
 
-class NormalRotate(DynamicRotate):
-
+class NormalRotate(Rotate):
+    """Rotate about plane defined by a list of atoms"""
     def __init__(self, atomlist, angle):
         self.atomlist = atomlist
         self.angle = angle
 
     def rotate_func(self, data):
+        """compute rotation matrix"""
         atoms = np.array([data[i, :] for i in self.atomlist])
 
         U, s, V = np.linalg.svd(atoms, full_matrices=False)
@@ -472,12 +468,13 @@ class NormalRotate(DynamicRotate):
         return Rotate.axis_angle(normal, self.angle)
 
 
-class PlaneRotate(DynamicRotate):
-
+class PlaneRotate(Rotate):
+    """Rotate about plane defined by a triple of atoms"""
     def __init__(self, atomlist):
         self.atomlist = atomlist
 
     def rotate_func(self, data):
+        """compute rotation matrix from input data"""
         atoms = np.array([data[i, :] for i in self.atomlist])
 
         U, s, V = np.linalg.svd(atoms, full_matrices=False)
@@ -524,9 +521,9 @@ class Reflect(Operation):
         proj = np.dot(data, normal)
         data -= 2.0 * np.dot(proj.reshape(len(proj), 1), normal.reshape(1, 3))
 
-    def iscomposable(self, op):
-        '''Disable composing reflections'''
-        return False
+    def reflect_func(self, data):
+        """dummy reflect function"""
+        raise NotImplementedError
 
     def compose(self, op):
         raise Exception("Improper use of Reflect.compose")
@@ -575,6 +572,7 @@ class PlaneReflect(Reflect):
 # Compound classes (for when a molecule needs to be shifted to origin and then returned)    #
 #-------------------------------------------------------------------------------------------#
 class ShiftedOperation(Operation):
+    """Operations that involve translation before and after the central operation"""
 
     def __init__(self, shift, operation):
         self.shift = shift
@@ -588,9 +586,6 @@ class ShiftedOperation(Operation):
         self.operation(data)
         unshift(data)
 
-    def iscomposable(self, op):
-        return False
-
     def compose(self, op):
         raise Exception("Cannot compose Compound classes")
 
@@ -598,13 +593,14 @@ class ShiftedOperation(Operation):
 #-------------------------------------------------------------------------------------------#
 # Main functionality                                                                        #
 #-------------------------------------------------------------------------------------------#
-class OperationList(object):
+class OperationList:
     '''Set of operations that automatically composes appended operations, when possible'''
 
     def __init__(self):
         self.operations = []
 
     def append(self, op):
+        """add new operation to the list and compose if possible"""
         if len(self) == 0:
             self.operations.append(op)
         elif self[-1].iscomposable(op):
@@ -623,6 +619,7 @@ class OperationList(object):
 
 
 def usage():
+    """print usage information"""
     print("Usage:")
     print("  orient [operations]+\n")
     print("File must be in xyz format. Operations can be strung together. Allowed operations are:")
@@ -650,22 +647,23 @@ def usage():
 
 
 def consume_arguments(arguments, geom):
+    """consume arguments and return a list of operations"""
     options = arguments[:]
     ops = OperationList()
 
-    while (options):
+    while options:
         opt = options.pop(0)
-        if (opt[1] == 't'):  # translations
-            if (len(opt) != 3):
+        if opt[1] == 't':  # translations
+            if len(opt) != 3:
                 raise Exception("Need to specify a translation option (x, y, z, a)")
             trans = None
             if opt[2] in "xyz":
                 tr = np.zeros(3)
                 tr["xyz".index(opt[2])] = float(options.pop(0))
                 trans = StaticTranslate(tr)
-            elif (opt[2] == 'a'):
+            elif opt[2] == 'a':
                 trans = AtomTranslate(int(options.pop(0)) - 1, -1.0)
-            elif (opt[2] == 'c'):
+            elif opt[2] == 'c':
                 trans = COMTranslate(geom)
             else:
                 raise Exception("Unrecognized translation option")
@@ -725,7 +723,7 @@ def consume_arguments(arguments, geom):
                 raise Exception("Unrecognized rotation option")
 
             ops.append(rotate)
-        elif (opt[1] == 's'):  # reflections
+        elif opt[1] == 's':  # reflections
             if len(opt) != 3:
                 raise Exception("Specify Reflection option (x, y, z, p)")
             if opt[2] in "xyz":
@@ -762,7 +760,7 @@ def consume_arguments(arguments, geom):
                 raise Exception("Unrecognized reflection option")
 
             ops.append(reflect)
-        elif (opt[1] == 'a'):
+        elif opt[1] == 'a':
             # align is called with -a <atom> <atom> <atom>
             ia = int(options.pop(0)) - 1
             ja = int(options.pop(0)) - 1
@@ -770,10 +768,10 @@ def consume_arguments(arguments, geom):
 
             ops.append(CentroidTranslate([ia, ja], -1.0))
             ops.append(AlignRotate(ia, ja, ka))
-        elif (opt[1:] == 'op'):
+        elif opt[1:] == 'op':
             ops.append(COMTranslate(geom))
             ops.append(InertiaRotate(geom))
-        elif (opt[1:] == 'p'):
+        elif opt[1:] == 'p':
             iatoms = []
             try:
                 while len(options) > 0 and options[0][0] != "-":
@@ -794,7 +792,7 @@ def consume_arguments(arguments, geom):
 def orient(arglist):
     if len(arglist) == 0:
         usage()
-        return
+        return []
 
     # map from option to number of expected arguments
     nargs = {
@@ -806,7 +804,6 @@ def orient(arglist):
         "rx": 1,
         "ry": 1,
         "rz": 1,
-        "rp": "+",
         "rb": 3,
         "ra": 3,
         "rp": "+",
@@ -852,7 +849,7 @@ def orient(arglist):
                     options.extend(arglist[i:i + narg])
                     i += narg
             else:
-                raise Exception("Unrecognized command: \"%s\" !" % op)
+                raise Exception(f"Unrecognized command: \"{op}\" !")
 
     geoms = []
     for fil in filenames:
@@ -869,11 +866,10 @@ def orient(arglist):
 
 
 if __name__ == "__main__":
-    import sys
 
-    if (len(sys.argv) == 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help"):
+    if len(sys.argv) == 1 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
         usage()
-        exit()
+        sys.exit()
 
     geoms = orient(sys.argv[1:])
     for g in geoms:
