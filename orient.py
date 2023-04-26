@@ -25,6 +25,8 @@ import sys
 import math as m
 import numpy as np
 
+bohr2ang = 0.529177249
+
 DEBUG = False
 
 # masses of most common isotopes to 3 decimal points, from
@@ -225,8 +227,8 @@ class GeometryCube(Geometry_):
     """Cube file"""
 
     def __init__(self,
-                 names,
                  atomnumber,
+                 charges,
                  coordinates,
                  origin,
                  resolutions,
@@ -243,6 +245,7 @@ class GeometryCube(Geometry_):
         self.axes = np.array(axes)
         self.volume_data = volume_data
         self.comments = comments
+        self.expect_dset = expect_dset
 
         self.mass = [masses[elements[i]] for i in atomnumber]
 
@@ -256,21 +259,21 @@ class GeometryCube(Geometry_):
         natoms = self.natoms
         if self.expect_dset:
             natoms *= -1
-        origin = self.origin / ang2bohr
+        origin = self.origin / bohr2ang # origin should always be in bohr
         print(f"{natoms:d} {origin[0]:16.10f} {origin[1]:16.10f} {origin[2]:16.10f}")
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         for i in range(3):
             res = self.resolutions[i]
-            ax_i = self.axes[i, :]
+            axis = self.axes[i, :] # unit on axes shouldn't matter
             print(f"{res:6s} {axis[0]:16.10f} {axis[1]:16.10f} {axis[2]:16.10f}")
 
         # next natoms lines define the molecule as
         # <atom number> <charge> <x> <y> <z>
         for i in range(self.natoms):
             atom = self.atomnumber[i]
-            xyz = self.coordinates[i, :] / bohr2ang
-            print(f"{atomnumber:6d} {self.charges[i]:16.10f} {xyz[0]:16.10f} {xyz[1]:16.10f} {xyz[2]:16.10f}")
+            xyz = self.coordinates[i, :] / bohr2ang # coordinates always in bohr
+            print(f"{atom:6d} {self.charges[i]:10s} {xyz[0]:16.10f} {xyz[1]:16.10f} {xyz[2]:16.10f}")
 
         for v in self.volume_data:
             print(v)
@@ -318,19 +321,19 @@ def read_cube(filename):
 
         # 3rd line is <natoms> <origin x> <origin y> <origin z>
         line = f.readline()
-        natoms, origin = line.split()[0:4]
+        natoms, *origin = line.split()[0:4]
         natoms = int(natoms)
         expect_dset = natoms < 0
         natoms = abs(natoms)
-        origin = np.array([float(x) for x in origin]) * bohr2ang
+        origin = np.array([float(x) for x in origin]) * bohr2ang # cube has bohr, want ang
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         resolutions = []
         axes = np.zeros([3, 3])
         for i in range(3):
-            res, axes_i = f.readline().split()
-            resolutions.append(res)
-            axes[i, :] = np.array([float(x) for x in line.split()])
+            res, *axis = f.readline().split()
+            resolutions.append(res) # sign on resolutions determines unit, but units don't matter here
+            axes[i, :] = np.array([float(x) for x in axis])
 
         coords = np.zeros([natoms, 3])
         atomnumber = []
@@ -338,11 +341,11 @@ def read_cube(filename):
         # next natoms lines define the molecule as
         # <atom number> <charge> <x> <y> <z>
         for i in range(natoms):
-            atom, chg, xyz = f.readline().split()
+            atom, chg, *xyz = f.readline().split()
             atomnumber.append(int(atom))
             charges.append(chg)
 
-            xyz = np.array([float(x) for x in xyz]) * bohr2ang
+            xyz = np.array([float(x) for x in xyz]) * bohr2ang # cube has bohr, want ang
             coords[i, :] = xyz
 
         volume_lines = []
