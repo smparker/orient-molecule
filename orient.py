@@ -250,7 +250,7 @@ class GeometryCube(Geometry_):
         self.charges = charges
         self.coordinates = np.array(coordinates)
         self.natoms = coordinates.shape[0]
-        self.origin = np.array(origin)
+        self.origin = np.array(origin).reshape([1,3])
         self.resolutions = resolutions
         self.axes = np.array(axes)
         self.volume_data = volume_data
@@ -265,7 +265,7 @@ class GeometryCube(Geometry_):
         static_op(self.origin)
 
         # axes should not get translated, but every other action should happen
-        if isinstance(operation, Rotation):
+        if isinstance(operation, Rotate):
             static_op(self.axes)
         elif isinstance(operation, Reflect):
             static_op(self.axes)
@@ -283,7 +283,7 @@ class GeometryCube(Geometry_):
         natoms = self.natoms
         if self.expect_dset:
             natoms *= -1
-        origin = self.origin / bohr2ang # origin should always be in bohr
+        origin = self.origin.reshape(3) / bohr2ang # origin should always be in bohr
         print(f"{natoms:d} {origin[0]:16.10f} {origin[1]:16.10f} {origin[2]:16.10f}")
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
