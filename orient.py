@@ -195,6 +195,10 @@ class Geometry_:
         inertial_tensor *= -1
         return inertial_tensor
 
+    def apply(self, operation):
+        """Apply a translation/rotation/reflection to the geometry"""
+        raise NotImplementedError
+
 
 class GeometryXYZ(Geometry_):
     """XYZ files"""
@@ -211,6 +215,10 @@ class GeometryXYZ(Geometry_):
 
         self.origin = None
         self.axes = None
+
+    def apply(self, operation):
+        """Apply a translation/rotation/reflection to the geometry"""
+        operation(self.coordinates)
 
     def print(self):
         """print in xyz format"""
@@ -236,6 +244,8 @@ class GeometryCube(Geometry_):
                  volume_data,
                  comments=["", ""],
                  expect_dset=False):
+        super().__init__()
+
         self.atomnumber = atomnumber
         self.charges = charges
         self.coordinates = np.array(coordinates)
@@ -999,7 +1009,7 @@ def orient(arglist):
     for g in geoms:
         ops = consume_arguments(options, g)
         for op in ops:
-            op(g.coordinates)
+            g.apply(op)
             if DEBUG:
                 g.print()
 
