@@ -78,6 +78,38 @@ if [ "$DIFF" != "" ]; then
   let nfailed+=1
 fi
 
+# translate cube file
+$ORIENT -tc $BASE/cuo.cube > $BASE/translate_CuO_cube/output.cube
+DIFF=$(diff -b $BASE/translate_CuO_cube/output.cube $BASE/translate_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'translate cube test failed!'
+  let nfailed+=1
+fi
+
+# rotate cube file
+$ORIENT -rx 37 -ry 80 -rz 11 $BASE/cuo.cube > $BASE/rotate_CuO_cube/output.cube
+DIFF=$(diff -b $BASE/rotate_CuO_cube/output.cube $BASE/rotate_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'rotate cube test failed!'
+  let nfailed+=1
+fi
+
+# reflect cube file
+$ORIENT -sz $BASE/cuo.cube > $BASE/reflect_CuO_cube/output.cube
+DIFF=$(diff -b $BASE/reflect_CuO_cube/output.cube $BASE/reflect_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'reflect cube test failed!'
+  let nfailed+=1
+fi
+
+# trf cube file
+$ORIENT -tc -rx 70 -tx 1 -ty 2 -tz 3 -sy $BASE/cuo.cube > $BASE/trf_CuO_cube/output.cube
+DIFF=$(diff -b $BASE/trf_CuO_cube/output.cube $BASE/trf_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'trf cube test failed!'
+  let nfailed+=1
+fi
+
 if [ $nfailed -eq 0 ]; then
   echo 'All tests passed!'
 else
