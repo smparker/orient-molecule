@@ -239,6 +239,7 @@ class GeometryCube(Geometry_):
                  charges,
                  coordinates,
                  origin,
+                 nval,
                  resolutions,
                  axes,
                  volume_data,
@@ -251,6 +252,7 @@ class GeometryCube(Geometry_):
         self.coordinates = np.array(coordinates)
         self.natoms = coordinates.shape[0]
         self.origin = np.array(origin).reshape([1,3])
+        self.nval = nval
         self.resolutions = resolutions
         self.axes = np.array(axes)
         self.volume_data = volume_data
@@ -284,20 +286,21 @@ class GeometryCube(Geometry_):
         if self.expect_dset:
             natoms *= -1
         origin = self.origin.reshape(3) / bohr2ang # origin should always be in bohr
-        print(f"{natoms:d} {origin[0]:16.10f} {origin[1]:16.10f} {origin[2]:16.10f}")
+        nvalstr = f" {self.nval:s}" if self.nval else ""
+        print(f"{natoms:>6d} {origin[0]:16.10f} {origin[1]:16.10f} {origin[2]:16.10f}{nvalstr:s}")
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         for i in range(3):
             res = self.resolutions[i]
             axis = self.axes[i, :] # unit on axes shouldn't matter
-            print(f"{res:6s} {axis[0]:16.10f} {axis[1]:16.10f} {axis[2]:16.10f}")
+            print(f"{res:>6s} {axis[0]:16.10f} {axis[1]:16.10f} {axis[2]:16.10f}")
 
         # next natoms lines define the molecule as
         # <atom number> <charge> <x> <y> <z>
         for i in range(self.natoms):
             atom = self.atomnumber[i]
             xyz = self.coordinates[i, :] / bohr2ang # coordinates always in bohr
-            print(f"{atom:6d} {self.charges[i]:10s} {xyz[0]:16.10f} {xyz[1]:16.10f} {xyz[2]:16.10f}")
+            print(f"{atom:6d} {self.charges[i]:16s} {xyz[0]:16.10f} {xyz[1]:16.10f} {xyz[2]:16.10f}")
 
         for v in self.volume_data:
             print(v)
@@ -345,7 +348,9 @@ def read_cube(filename):
 
         # 3rd line is <natoms> <origin x> <origin y> <origin z>
         line = f.readline()
-        natoms, *origin = line.split()[0:4]
+        split = line.split()
+        natoms, *origin = split[0:4]
+        nval = split[4] if len(split) > 4 else None
         natoms = int(natoms)
         expect_dset = natoms < 0
         natoms = abs(natoms)
@@ -384,6 +389,7 @@ def read_cube(filename):
                             charges,
                             coords,
                             origin,
+                            nval,
                             resolutions,
                             axes,
                             volume_lines,
