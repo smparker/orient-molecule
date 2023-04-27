@@ -259,6 +259,20 @@ class GeometryCube(Geometry_):
 
         self.mass = [masses[elements[i]] for i in atomnumber]
 
+    def apply(self, operation):
+        """Apply a translation/rotation/reflection to the geometry"""
+        static_op = operation(self.coordinates)
+        static_op(self.origin)
+
+        # axes should not get translated, but every other action should happen
+        if isinstance(operation, Rotation):
+            static_op(self.axes)
+        elif isinstance(operation, Reflect):
+            static_op(self.axes)
+        elif isinstance(operation, ShiftedOperation):
+            # extract the non-translation part of the operation:w
+            static_op.operation(self.axes)
+
     def print(self):
         """print in cube format"""
         # 1st and 2nd lines are comments
@@ -414,6 +428,7 @@ class Translate(Operation):
     def __call__(self, data):
         displacement = self.displacement_func(data)
         data += np.repeat(displacement.reshape(1, 3), data.shape[0], axis=0)
+        return StaticTranslate(displacement)
 
     def displacement_func(self, data):
         """dummy displacement function"""
@@ -483,6 +498,7 @@ class Rotate(Operation):
             raise Exception("Determinant of Rotation needs to be 1")
         tmp = np.dot(data, A.T)
         data[:] = tmp[:]
+        return StaticRotate(A)
 
     def rotate_func(self, data):
         """dummy rotate function"""
@@ -678,6 +694,8 @@ class Reflect(Operation):
         proj = np.dot(data, normal)
         data -= 2.0 * np.dot(proj.reshape(len(proj), 1), normal.reshape(1, 3))
 
+        return StaticReflect(normal)
+
     def reflect_func(self, data):
         """dummy reflect function"""
         raise NotImplementedError
@@ -734,12 +752,13 @@ class ShiftedOperation(Operation):
 
     def __call__(self, data):
         displacement = self.shift.displacement_func(data)
+        shift = StaticTranslate(displacement)
         unshift = StaticTranslate(-displacement)
 
-        self.shift(data)
-        self.operation(data)
+        shift(data)
+        static_op = self.operation(data)
         unshift(data)
-
+        return ShiftedOperation(shift, static_op)
 
 #-------------------------------------------------------------------------------------------#
 # Main functionality                                                                        #
