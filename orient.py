@@ -25,7 +25,7 @@ import sys
 import math as m
 import numpy as np
 
-bohr2ang = 0.529177210903
+BOHR2ANG = 0.529177210903
 
 DEBUG = False
 
@@ -157,17 +157,20 @@ masses = {
 
 # list of all elements, sorted by atomic number
 elements = [
-    'x', 'h', 'he', 'li', 'be', 'b', 'c', 'n', 'o', 'f', 'ne', 'na', 'mg', 'al', 'si', 'p', 's', 'cl', 'ar', 'k', 'ca',
-    'sc', 'ti', 'v', 'cr', 'mn', 'fe', 'co', 'ni', 'cu', 'zn', 'ga', 'ge', 'as', 'se', 'br', 'kr', 'rb', 'sr', 'y',
-    'zr', 'nb', 'mo', 'tc', 'ru', 'rh', 'pd', 'ag', 'cd', 'in', 'sn', 'sb', 'te', 'i', 'xe', 'cs', 'ba', 'la', 'ce',
-    'pr', 'nd', 'pm', 'sm', 'eu', 'gd', 'tb', 'dy', 'ho', 'er', 'tm', 'yb', 'lu', 'hf', 'ta', 'w', 're', 'os', 'ir',
-    'pt', 'au', 'hg', 'tl', 'pb', 'bi', 'po', 'at', 'rn', 'fr', 'ra', 'ac', 'th', 'pa', 'u', 'np', 'pu', 'am', 'cm',
-    'bk', 'cf', 'es', 'fm', 'md', 'no', 'lr', 'rf', 'db', 'sg', 'bh', 'hs', 'mt', 'ds', 'rg', 'cn', 'nh', 'fl', 'mc',
-    'lv', 'ts', 'og'
+    'x', 'h', 'he', 'li', 'be', 'b', 'c', 'n', 'o', 'f', 'ne', 'na', 'mg', 'al',
+    'si', 'p', 's', 'cl', 'ar', 'k', 'ca', 'sc', 'ti', 'v', 'cr', 'mn', 'fe',
+    'co', 'ni', 'cu', 'zn', 'ga', 'ge', 'as', 'se', 'br', 'kr', 'rb', 'sr', 'y',
+    'zr', 'nb', 'mo', 'tc', 'ru', 'rh', 'pd', 'ag', 'cd', 'in', 'sn', 'sb',
+    'te', 'i', 'xe', 'cs', 'ba', 'la', 'ce', 'pr', 'nd', 'pm', 'sm', 'eu', 'gd',
+    'tb', 'dy', 'ho', 'er', 'tm', 'yb', 'lu', 'hf', 'ta', 'w', 're', 'os', 'ir',
+    'pt', 'au', 'hg', 'tl', 'pb', 'bi', 'po', 'at', 'rn', 'fr', 'ra', 'ac',
+    'th', 'pa', 'u', 'np', 'pu', 'am', 'cm', 'bk', 'cf', 'es', 'fm', 'md', 'no',
+    'lr', 'rf', 'db', 'sg', 'bh', 'hs', 'mt', 'ds', 'rg', 'cn', 'nh', 'fl',
+    'mc', 'lv', 'ts', 'og'
 ]
 
 
-class Geometry_:
+class _Geometry:
     '''Stores all of the data in an xyz file'''
 
     def __init__(self):
@@ -200,7 +203,7 @@ class Geometry_:
         raise NotImplementedError
 
 
-class GeometryXYZ(Geometry_):
+class GeometryXYZ(_Geometry):
     """XYZ files"""
 
     def __init__(self, names, coordinates, comment="", extras=None):
@@ -226,12 +229,15 @@ class GeometryXYZ(Geometry_):
         print(self.comment)
 
         for i in range(self.natoms):
-            extra = " ".join([f"{x:16.10f}" for x in self.extras[i]]) if self.extras else ""
+            extra = " ".join([f"{x:16.10f}" for x in self.extras[i]
+                             ]) if self.extras else ""
             x, y, z = self.coordinates[i, :]
-            print(f"{self.names[i]:>3s} {x:16.10f} {y:16.10f} {z:16.10f} {extra:s}")
+            print(
+                f"{self.names[i]:>3s} {x:16.10f} {y:16.10f} {z:16.10f} {extra:s}"
+            )
 
 
-class GeometryCube(Geometry_):
+class GeometryCube(_Geometry):
     """Cube file"""
 
     def __init__(self,
@@ -243,7 +249,7 @@ class GeometryCube(Geometry_):
                  resolutions,
                  axes,
                  volume_data,
-                 comments=["", ""],
+                 comments=None,
                  expect_dset=False):
         super().__init__()
 
@@ -257,6 +263,8 @@ class GeometryCube(Geometry_):
         self.axes = np.array(axes)
         self.volume_data = volume_data
         self.comments = comments
+        if self.comments is None:
+            self.comments = ["", ""]
         self.expect_dset = expect_dset
 
         self.mass = [masses[elements[i]] for i in atomnumber]
@@ -285,22 +293,29 @@ class GeometryCube(Geometry_):
         natoms = self.natoms
         if self.expect_dset:
             natoms *= -1
-        origin = self.origin.reshape(3) / bohr2ang  # origin should always be in bohr
+        origin = self.origin.reshape(
+            3) / BOHR2ANG  # origin should always be in bohr
         nvalstr = f" {self.nval:s}" if self.nval else ""
-        print(f"{natoms:>5d} {origin[0]:>11.6f} {origin[1]:>11.6f} {origin[2]:>11.6f}{nvalstr:>5s}".rstrip())
+        print(
+            f"{natoms:>5d} {origin[0]:>11.6f} {origin[1]:>11.6f} {origin[2]:>11.6f}{nvalstr:>5s}"
+            .rstrip())
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         for i in range(3):
             res = self.resolutions[i]
             axis = self.axes[i, :]  # unit on axes shouldn't matter
-            print(f"{res:>5s} {axis[0]:>11.6f} {axis[1]:>11.6f} {axis[2]:>11.6f}")
+            print(
+                f"{res:>5s} {axis[0]:>11.6f} {axis[1]:>11.6f} {axis[2]:>11.6f}")
 
         # next natoms lines define the molecule as
         # <atom number> <charge> <x> <y> <z>
         for i in range(self.natoms):
             atom = self.atomnumber[i]
-            xyz = self.coordinates[i, :] / bohr2ang  # coordinates always in bohr
-            print(f"{atom:>5d} {self.charges[i]:>11s} {xyz[0]:>11.6f} {xyz[1]:>11.6f} {xyz[2]:>11.6f}")
+            xyz = self.coordinates[
+                i, :] / BOHR2ANG  # coordinates always in bohr
+            print(
+                f"{atom:>5d} {self.charges[i]:>11s} {xyz[0]:>11.6f} {xyz[1]:>11.6f} {xyz[2]:>11.6f}"
+            )
 
         for v in self.volume_data:
             print(v)
@@ -320,7 +335,7 @@ def read_xyz(filename):
             coords = []
             extras = []
 
-            for i in range(natoms):
+            for _i in range(natoms):
                 line = f.readline()
                 data = line.split()
                 name, x, y, z = data[0:4]
@@ -331,7 +346,11 @@ def read_xyz(filename):
                 if extra:
                     extras.append(extra)
 
-            out.append(GeometryXYZ(names, np.array(coords), comment=comment, extras=extras))
+            out.append(
+                GeometryXYZ(names,
+                            np.array(coords),
+                            comment=comment,
+                            extras=extras))
 
             line = f.readline()
 
@@ -354,14 +373,17 @@ def read_cube(filename):
         natoms = int(natoms)
         expect_dset = natoms < 0
         natoms = abs(natoms)
-        origin = np.array([float(x) for x in origin]) * bohr2ang  # cube has bohr, want ang
+        origin = np.array([float(x) for x in origin
+                          ]) * BOHR2ANG  # cube has bohr, want ang
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         resolutions = []
         axes = np.zeros([3, 3])
         for i in range(3):
             res, *axis = f.readline().split()
-            resolutions.append(res)  # sign on resolutions determines unit, but units don't matter here
+            resolutions.append(
+                res
+            )  # sign on resolutions determines unit, but units don't matter here
             axes[i, :] = np.array([float(x) for x in axis])
 
         coords = np.zeros([natoms, 3])
@@ -374,7 +396,8 @@ def read_cube(filename):
             atomnumber.append(int(atom))
             charges.append(chg)
 
-            xyz = np.array([float(x) for x in xyz]) * bohr2ang  # cube has bohr, want ang
+            xyz = np.array([float(x) for x in xyz
+                           ]) * BOHR2ANG  # cube has bohr, want ang
             coords[i, :] = xyz
 
         volume_lines = []
@@ -401,24 +424,35 @@ def read_cube(filename):
 
 
 def read_file(filename):
+    """reads file and returns Geometry object
+
+    Guesses filetype from file ending
+    .xyz -> GeometryXYZ
+    .cube, .cub -> GeometryCube
+
+    Args:
+        filename (str): filename to read
+    """
     if filename.endswith(".xyz"):
         return read_xyz(filename)
     elif filename.endswith(".cub") or filename.endswith(".cube"):
         return read_cube(filename)
+    else:
+        raise RuntimeError("Unsupported filetype provided")
 
 
 class Operation:
     '''Base class for generic operation'''
 
-    def __call__(self, data):
+    def __call__(self, _data):
         '''act on provided coordinate data'''
         raise Exception("Improper use of Operation class!")
 
-    def iscomposable(self, op):
+    def iscomposable(self, _op):
         '''do not compose any objects by default'''
         return False
 
-    def compose(self, op):
+    def compose(self, _op):
         '''compose this op and input op'''
         raise RuntimeError("This operation not composable")
 
@@ -453,10 +487,10 @@ class StaticTranslate(Translate):
     def iscomposable(self, op):
         return isinstance(op, StaticTranslate)
 
-    def compose(self, trans):
-        assert self.iscomposable(trans)
+    def compose(self, op):
+        assert self.iscomposable(op)
 
-        self.displacement += trans.displacement
+        self.displacement += op.displacement
 
 
 class AtomTranslate(Translate):
@@ -498,13 +532,15 @@ class Rotate(Operation):
     '''Generic rotation'''
 
     def __call__(self, data):
-        A = self.rotate_func(data)
-        detA = np.linalg.det(A)
-        if detA < 0.0:
-            raise Exception("Determinant of Rotation needs to be 1")
-        tmp = np.dot(data, A.T)
+        rotation = self.rotate_func(data)
+        det_rotation = np.linalg.det(rotation)
+        if not np.isclose(det_rotation, 1.0):
+            raise Exception(
+                "Determinant of rotation matrix is {det_rotation}, but needs to be 1"
+            )
+        tmp = np.dot(data, rotation.T)
         data[:] = tmp[:]
-        return StaticRotate(A)
+        return StaticRotate(rotation)
 
     def rotate_func(self, data):
         """dummy rotate function"""
@@ -512,19 +548,21 @@ class Rotate(Operation):
 
     @staticmethod
     def axis_angle(axis, angle):
+        """Construct from axis and angle of rotation"""
         axis /= np.linalg.norm(axis)
         theta = m.radians(angle)
 
         costheta = m.cos(theta)
         sintheta = m.sin(theta)
 
-        Ex = np.array([[0.0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0.0]])
+        ex = np.array([[0.0, -axis[2], axis[1]], [axis[2], 0, -axis[0]],
+                       [-axis[1], axis[0], 0.0]])
 
-        A = costheta * \
+        rotation = costheta * \
             np.eye(3) + (1.0 - costheta) * \
             np.dot(axis.reshape(3, 1), axis.reshape(1, 3)) + \
-            sintheta * Ex
-        return A
+            sintheta * ex
+        return rotation
 
 
 class StaticRotate(Rotate):
@@ -539,10 +577,11 @@ class StaticRotate(Rotate):
     def iscomposable(self, op):
         return isinstance(op, StaticRotate)
 
-    def compose(self, rot):
-        assert self.iscomposable(rot)
+    def compose(self, op):
+        assert self.iscomposable(op)
 
-        self.rot_matrix = np.dot(self.rot_matrix, rot.rot_matrix)
+        rotation = np.dot(self.rot_matrix, op.rot_matrix)
+        self.rot_matrix[:, :] = rotation[:, :]
 
     @classmethod
     def from_axis_angle(cls, axis, angle):
@@ -601,7 +640,7 @@ class InertiaRotate(Rotate):
         inertial_tensor = np.einsum("ax,a,ay->xy", data, self.mass, data)
         inertial_tensor *= -1
         # negate sign to reverse the sorting of the tensor
-        eig, axes = np.linalg.eigh(-inertial_tensor)
+        _eig, axes = np.linalg.eigh(-inertial_tensor)
         axes = axes.T
 
         # adjust sign of axes so third moment moment is positive new in X, and Y axes
@@ -630,7 +669,7 @@ class NormalRotate(Rotate):
         """compute rotation matrix"""
         atoms = np.array([data[i, :] for i in self.atomlist])
 
-        U, s, V = np.linalg.svd(atoms, full_matrices=False)
+        _U, _s, V = np.linalg.svd(atoms, full_matrices=False)
 
         normal = V[2, :]
         normal /= np.linalg.norm(normal)
@@ -656,7 +695,7 @@ class PlaneRotate(Rotate):
         """compute rotation matrix from input data"""
         atoms = np.array([data[i, :] for i in self.atomlist])
 
-        U, s, V = np.linalg.svd(atoms, full_matrices=False)
+        _U, _s, V = np.linalg.svd(atoms, full_matrices=False)
 
         normal = V[2, :]
         normal /= np.linalg.norm(normal)
@@ -739,7 +778,7 @@ class PlaneReflect(Reflect):
     def reflect_func(self, data):
         atoms = np.array([data[i, :] for i in self.atomlist])
 
-        U, s, V = np.linalg.svd(atoms, full_matrices=False)
+        _U, _s, V = np.linalg.svd(atoms, full_matrices=False)
 
         normal = V[2, :]
         normal /= np.linalg.norm(normal)
@@ -799,29 +838,47 @@ def usage():
     """print usage information"""
     print("Usage:")
     print("  orient [operations]+\n")
-    print("File must be in xyz format. Operations can be strung together. Allowed operations are:")
-    print("  {:30s} -- {:30s}".format("-t[xyz] <distance>", "translate in x, y, or z direction"))
-    print("  {:30s} -- {:30s}".format("-ta <atom>", "translate <atom> to origin"))
-    print("  {:30s} -- {:30s}".format("-tc", "translate center of mass to origin"))
-    print("  {:30s} -- {:30s}".format("-r[xyz] <angle>", "rotate around given axis"))
-    print("  {:30s} -- {:30s}".format("-rb <angle> <atom> <atom>", "rotate around axis defined by pair of atoms"))
-    print("  {:30s} -- {:30s}".format("-rp <angle> <a1> <a2> [...]",
-                                      "rotate around normal of plane defined by list of atoms"))
-    print("  {:30s} -- {:30s}".format("-rv <angle> <x> <y> <z>", "rotate around defined vector"))
+    print(
+        "File must be in xyz format. Operations can be strung together. Allowed operations are:"
+    )
+    print("  {:30s} -- {:30s}".format("-t[xyz] <distance>",
+                                      "translate in x, y, or z direction"))
+    print("  {:30s} -- {:30s}".format("-ta <atom>",
+                                      "translate <atom> to origin"))
+    print("  {:30s} -- {:30s}".format("-tc",
+                                      "translate center of mass to origin"))
+    print("  {:30s} -- {:30s}".format("-r[xyz] <angle>",
+                                      "rotate around given axis"))
+    print("  {:30s} -- {:30s}".format(
+        "-rb <angle> <atom> <atom>",
+        "rotate around axis defined by pair of atoms"))
+    print("  {:30s} -- {:30s}".format(
+        "-rp <angle> <a1> <a2> [...]",
+        "rotate around normal of plane defined by list of atoms"))
+    print("  {:30s} -- {:30s}".format("-rv <angle> <x> <y> <z>",
+                                      "rotate around defined vector"))
     print("  {:30s} -- {:30s}".format(
         "-rd <angle> <a1> <a2> <a3> []",
-        "rotate bond around midpoint of a diene (vector from bond midpoint in direction of normal)"))
-    print("  {:30s} -- {:30s}".format("-s[xyz]", "reflect across plane defined by chosen axis as normal"))
-    print("  {:30s} -- {:30s}".format("-sv", "reflect across plane defined by specified normal"))
+        "rotate bond around midpoint of a diene (vector from bond midpoint in direction of normal)"
+    ))
+    print("  {:30s} -- {:30s}".format(
+        "-s[xyz]", "reflect across plane defined by chosen axis as normal"))
+    print("  {:30s} -- {:30s}".format(
+        "-sv", "reflect across plane defined by specified normal"))
     print("  {:30s} -- {:30s}".format("-sb <a1> <a2>", "reflect across a bond"))
-    print("  {:30s} -- {:30s}".format("-sp <a1> <a2> <a3> [...]", "reflect across plane fitted to specified atoms"))
+    print("  {:30s} -- {:30s}".format(
+        "-sp <a1> <a2> <a3> [...]",
+        "reflect across plane fitted to specified atoms"))
     print("  {:30s} -- {:30s}".format(
         "-a <atom1> <atom2> <atom3>",
-        "align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane"))
+        "align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane"
+    ))
     print("  {:30s} -- {:30s}".format(
         "-p <atom1> ... <atomk>",
-        "align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis"))
-    print("  {:30s} -- {:30s}".format("-op", "translate to center of mass, orient along principle axes"))
+        "align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis"
+    ))
+    print("  {:30s} -- {:30s}".format(
+        "-op", "translate to center of mass, orient along principle axes"))
 
 
 def consume_arguments(arguments, geom):
@@ -833,7 +890,8 @@ def consume_arguments(arguments, geom):
         opt = options.pop(0)
         if opt[1] == 't':  # translations
             if len(opt) != 3:
-                raise Exception("Need to specify a translation option (x, y, z, a)")
+                raise Exception(
+                    "Need to specify a translation option (x, y, z, a)")
             trans = None
             if opt[2] in "xyz":
                 tr = np.zeros(3)
@@ -851,7 +909,8 @@ def consume_arguments(arguments, geom):
             angle = float(options.pop(0))
 
             if len(opt) != 3:
-                raise Exception("Need to specify a rotation option (x, y, z, p, v)")
+                raise Exception(
+                    "Need to specify a rotation option (x, y, z, p, v)")
             axis = np.zeros(3)
             if opt[2] in "xyz":
                 axis["xyz".index(opt[2])] = 1.0
@@ -879,7 +938,11 @@ def consume_arguments(arguments, geom):
 
                 rotate = ShiftedOperation(trans, rot)
             elif opt[2] == 'v':  # vector
-                axis = np.array([float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
+                axis = np.array([
+                    float(options.pop(0)),
+                    float(options.pop(0)),
+                    float(options.pop(0))
+                ])
                 rotate = StaticRotate.from_axis_angle(axis, angle)
             elif opt[2] == 'd':
                 atomlist = []
@@ -918,7 +981,11 @@ def consume_arguments(arguments, geom):
 
                 reflect = ShiftedOperation(trans, ref)
             elif opt[2] == "v":
-                normal = np.array([float(options.pop(0)), float(options.pop(0)), float(options.pop(0))])
+                normal = np.array([
+                    float(options.pop(0)),
+                    float(options.pop(0)),
+                    float(options.pop(0))
+                ])
                 reflect = StaticReflect(normal)
             elif opt[2] == "p":
                 iatoms = []
@@ -968,6 +1035,7 @@ def consume_arguments(arguments, geom):
 
 
 def orient(arglist):
+    """orient a molecule according to the given options"""
     if len(arglist) == 0:
         usage()
         return []
@@ -1014,7 +1082,8 @@ def orient(arglist):
                 if "+" == nargs[op[1:]]:
                     narg = 1
                     try:
-                        while i + narg < len(arglist) and arglist[i + narg][0] != "-":
+                        while i + narg < len(arglist) and arglist[
+                                i + narg][0] != "-":
                             int(arglist[i + narg])
                             narg += 1
                     except ValueError:
@@ -1050,5 +1119,5 @@ if __name__ == "__main__":
         sys.exit()
 
     geoms = orient(sys.argv[1:])
-    for g in geoms:
-        g.print()
+    for molecule in geoms:
+        molecule.print()
