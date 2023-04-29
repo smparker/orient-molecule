@@ -25,7 +25,7 @@ import sys
 import math as m
 import numpy as np
 
-bohr2ang = 0.529177249
+bohr2ang = 0.529177210903
 
 DEBUG = False
 
