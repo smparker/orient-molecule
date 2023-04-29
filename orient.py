@@ -325,24 +325,23 @@ def read_xyz(filename):
     '''reads xyz file and returns GeometryXYZ object'''
     out = []
 
-    with open(filename, "r") as f:
-        line = f.readline()
+    with open(filename, "r") as fil:
+        line = fil.readline()
         while line != "":
             natoms = int(line)
-            comment = f.readline().rstrip()
+            comment = fil.readline().rstrip()
 
             names = []
             coords = []
             extras = []
 
             for _i in range(natoms):
-                line = f.readline()
-                data = line.split()
-                name, x, y, z = data[0:4]
+                data = fil.readline().split()
+                name, *xyz = data[0:4]
                 extra = [float(d) for d in data[4:]]
 
                 names.append(name.capitalize())
-                coords.append([float(x), float(y), float(z)])
+                coords.append([float(x) for x in xyz])
                 if extra:
                     extras.append(extra)
 
@@ -352,7 +351,7 @@ def read_xyz(filename):
                             comment=comment,
                             extras=extras))
 
-            line = f.readline()
+            line = fil.readline()
 
     return out
 
@@ -361,12 +360,12 @@ def read_cube(filename):
     """reads cube format and returns GeometryCube"""
     out = []
 
-    with open(filename, "r") as f:
+    with open(filename, "r") as fil:
         # 1st and 2nd lines are comments
-        comments = [f.readline().rstrip(), f.readline().rstrip()]
+        comments = [fil.readline().rstrip(), fil.readline().rstrip()]
 
         # 3rd line is <natoms> <origin x> <origin y> <origin z>
-        line = f.readline()
+        line = fil.readline()
         split = line.split()
         natoms, *origin = split[0:4]
         nval = split[4] if len(split) > 4 else None
@@ -380,7 +379,7 @@ def read_cube(filename):
         resolutions = []
         axes = np.zeros([3, 3])
         for i in range(3):
-            res, *axis = f.readline().split()
+            res, *axis = fil.readline().split()
             resolutions.append(
                 res
             )  # sign on resolutions determines unit, but units don't matter here
@@ -392,7 +391,7 @@ def read_cube(filename):
         # next natoms lines define the molecule as
         # <atom number> <charge> <x> <y> <z>
         for i in range(natoms):
-            atom, chg, *xyz = f.readline().split()
+            atom, chg, *xyz = fil.readline().split()
             atomnumber.append(int(atom))
             charges.append(chg)
 
@@ -403,7 +402,7 @@ def read_cube(filename):
         volume_lines = []
         # the rest is the volume data
         while True:
-            line = f.readline()
+            line = fil.readline()
             if line == "":
                 break
             volume_lines.append(line.rstrip())
@@ -841,44 +840,34 @@ def usage():
     print(
         "File must be in xyz format. Operations can be strung together. Allowed operations are:"
     )
-    print("  {:30s} -- {:30s}".format("-t[xyz] <distance>",
-                                      "translate in x, y, or z direction"))
-    print("  {:30s} -- {:30s}".format("-ta <atom>",
-                                      "translate <atom> to origin"))
-    print("  {:30s} -- {:30s}".format("-tc",
-                                      "translate center of mass to origin"))
-    print("  {:30s} -- {:30s}".format("-r[xyz] <angle>",
-                                      "rotate around given axis"))
-    print("  {:30s} -- {:30s}".format(
-        "-rb <angle> <atom> <atom>",
-        "rotate around axis defined by pair of atoms"))
-    print("  {:30s} -- {:30s}".format(
-        "-rp <angle> <a1> <a2> [...]",
-        "rotate around normal of plane defined by list of atoms"))
-    print("  {:30s} -- {:30s}".format("-rv <angle> <x> <y> <z>",
-                                      "rotate around defined vector"))
-    print("  {:30s} -- {:30s}".format(
-        "-rd <angle> <a1> <a2> <a3> []",
-        "rotate bond around midpoint of a diene (vector from bond midpoint in direction of normal)"
-    ))
-    print("  {:30s} -- {:30s}".format(
-        "-s[xyz]", "reflect across plane defined by chosen axis as normal"))
-    print("  {:30s} -- {:30s}".format(
-        "-sv", "reflect across plane defined by specified normal"))
-    print("  {:30s} -- {:30s}".format("-sb <a1> <a2>", "reflect across a bond"))
-    print("  {:30s} -- {:30s}".format(
-        "-sp <a1> <a2> <a3> [...]",
-        "reflect across plane fitted to specified atoms"))
-    print("  {:30s} -- {:30s}".format(
-        "-a <atom1> <atom2> <atom3>",
-        "align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane"
-    ))
-    print("  {:30s} -- {:30s}".format(
-        "-p <atom1> ... <atomk>",
-        "align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis"
-    ))
-    print("  {:30s} -- {:30s}".format(
-        "-op", "translate to center of mass, orient along principle axes"))
+    option_help = [
+        ("-t[xyz] <distance", "translate in x, y, or z direction"),
+        ("-t[xyz] <distance>", "translate in x, y, or z direction"),
+        ("-ta <atom>", "translate <atom> to origin"),
+        ("-tc", "translate center of mass to origin"),
+        ("-r[xyz] <angle>", "rotate around given axis"),
+        ("-rb <angle> <atom> <atom>",
+         "rotate around axis defined by pair of atoms"),
+        ("-rp <angle> <a1> <a2> [...]",
+         "rotate around normal of plane defined by list of atoms"),
+        ("-rv <angle> <x> <y> <z>", "rotate around defined vector"),
+        ("-rd <angle> <a1> <a2> <a3> []",
+         "rotate bond around midpoint of a diene (vector from bond midpoint in direction of normal)"
+        ), ("-s[xyz]", "reflect across plane defined by chosen axis as normal"),
+        ("-sv", "reflect across plane defined by specified normal"),
+        ("-sb <a1> <a2>", "reflect across a bond"),
+        ("-sp <a1> <a2> <a3> [...]",
+         "reflect across plane fitted to specified atoms"),
+        ("-a <atom1> <atom2> <atom3>",
+         "align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane"
+        ),
+        ("-p <atom1> ... <atomk>",
+         "align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis"
+        )
+    ]
+
+    for option, hlp in option_help:
+        print(f"  {option:30s} -- {hlp:30s}")
 
 
 def consume_arguments(arguments, geom):
@@ -1034,11 +1023,8 @@ def consume_arguments(arguments, geom):
     return ops
 
 
-def orient(arglist):
-    """orient a molecule according to the given options"""
-    if len(arglist) == 0:
-        usage()
-        return []
+def get_options_and_targets(arglist):
+    """Read commandline string and return list of options"""
 
     # map from option to number of expected arguments
     nargs = {
@@ -1098,16 +1084,27 @@ def orient(arglist):
             else:
                 raise Exception(f"Unrecognized command: \"{op}\" !")
 
+    return options, filenames
+
+
+def orient(arglist):
+    """orient a molecule according to the given options"""
+    if len(arglist) == 0:
+        usage()
+        return []
+
+    options, filenames = get_options_and_targets(arglist)
+
     geoms = []
     for fil in filenames:
         geoms.extend(read_file(fil))
 
-    for g in geoms:
-        ops = consume_arguments(options, g)
+    for molecule in geoms:
+        ops = consume_arguments(options, molecule)
         for op in ops:
-            g.apply(op)
+            molecule.apply(op)
             if DEBUG:
-                g.print()
+                molecule.print()
 
     return geoms
 
