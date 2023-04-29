@@ -251,7 +251,7 @@ class GeometryCube(Geometry_):
         self.charges = charges
         self.coordinates = np.array(coordinates)
         self.natoms = coordinates.shape[0]
-        self.origin = np.array(origin).reshape([1,3])
+        self.origin = np.array(origin).reshape([1, 3])
         self.nval = nval
         self.resolutions = resolutions
         self.axes = np.array(axes)
@@ -285,21 +285,21 @@ class GeometryCube(Geometry_):
         natoms = self.natoms
         if self.expect_dset:
             natoms *= -1
-        origin = self.origin.reshape(3) / bohr2ang # origin should always be in bohr
+        origin = self.origin.reshape(3) / bohr2ang  # origin should always be in bohr
         nvalstr = f" {self.nval:s}" if self.nval else ""
         print(f"{natoms:>5d} {origin[0]:>11.6f} {origin[1]:>11.6f} {origin[2]:>11.6f}{nvalstr:>5s}".rstrip())
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         for i in range(3):
             res = self.resolutions[i]
-            axis = self.axes[i, :] # unit on axes shouldn't matter
+            axis = self.axes[i, :]  # unit on axes shouldn't matter
             print(f"{res:>5s} {axis[0]:>11.6f} {axis[1]:>11.6f} {axis[2]:>11.6f}")
 
         # next natoms lines define the molecule as
         # <atom number> <charge> <x> <y> <z>
         for i in range(self.natoms):
             atom = self.atomnumber[i]
-            xyz = self.coordinates[i, :] / bohr2ang # coordinates always in bohr
+            xyz = self.coordinates[i, :] / bohr2ang  # coordinates always in bohr
             print(f"{atom:>5d} {self.charges[i]:>11s} {xyz[0]:>11.6f} {xyz[1]:>11.6f} {xyz[2]:>11.6f}")
 
         for v in self.volume_data:
@@ -354,14 +354,14 @@ def read_cube(filename):
         natoms = int(natoms)
         expect_dset = natoms < 0
         natoms = abs(natoms)
-        origin = np.array([float(x) for x in origin]) * bohr2ang # cube has bohr, want ang
+        origin = np.array([float(x) for x in origin]) * bohr2ang  # cube has bohr, want ang
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         resolutions = []
         axes = np.zeros([3, 3])
         for i in range(3):
             res, *axis = f.readline().split()
-            resolutions.append(res) # sign on resolutions determines unit, but units don't matter here
+            resolutions.append(res)  # sign on resolutions determines unit, but units don't matter here
             axes[i, :] = np.array([float(x) for x in axis])
 
         coords = np.zeros([natoms, 3])
@@ -374,7 +374,7 @@ def read_cube(filename):
             atomnumber.append(int(atom))
             charges.append(chg)
 
-            xyz = np.array([float(x) for x in xyz]) * bohr2ang # cube has bohr, want ang
+            xyz = np.array([float(x) for x in xyz]) * bohr2ang  # cube has bohr, want ang
             coords[i, :] = xyz
 
         volume_lines = []
@@ -765,6 +765,7 @@ class ShiftedOperation(Operation):
         static_op = self.operation(data)
         unshift(data)
         return ShiftedOperation(shift, static_op)
+
 
 #-------------------------------------------------------------------------------------------#
 # Main functionality                                                                        #
