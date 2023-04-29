@@ -800,27 +800,28 @@ def usage():
     print("Usage:")
     print("  orient [operations]+\n")
     print("File must be in xyz format. Operations can be strung together. Allowed operations are:")
-    print("    -t[xyz] <distance>             \t -- translate in x, y, or z direction")
-    print("    -ta <atom>                     \t -- translate <atom> to origin")
-    print("    -tc                            \t -- translate center of mass to origin")
-    print("    -r[xyz] <angle>                \t -- rotate around given axis")
-    print("    -rb <angle> <atom> <atom>      \t -- rotate around axis defined by pair of atoms")
-    print("    -rp <angle> <a1> <a2> [...]    \t -- rotate around normal of plane defined by list of atoms")
-    print("    -rv <angle> <x> <y> <z>        \t -- rotate around defined vector")
-    print(
-        "    -rd <angle> <a1> <a2> <a3> []  \t -- rotate bond around midpoint of a diene (vector from bond midpoint in direction of normal)"
-    )
-    print("    -s[xyz]                        \t -- reflect across plane defined by chosen axis as normal")
-    print("    -sv                            \t -- reflect across plane defined by specified normal")
-    print("    -sb <a1> <a2>                  \t -- reflect across a bond")
-    print("    -sp <a1> <a2> <a3> [...]       \t -- reflect across plane fitted to specified atoms")
-    print(
-        "    -a <atom1> <atom2> <atom3>     \t -- align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane"
-    )
-    print(
-        "    -p <atom1> ... <atomk>         \t -- align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis"
-    )
-    print("    -op                            \t -- translate to center of mass, orient along principle axes")
+    print("  {:30s} -- {:30s}".format("-t[xyz] <distance>", "translate in x, y, or z direction"))
+    print("  {:30s} -- {:30s}".format("-ta <atom>", "translate <atom> to origin"))
+    print("  {:30s} -- {:30s}".format("-tc", "translate center of mass to origin"))
+    print("  {:30s} -- {:30s}".format("-r[xyz] <angle>", "rotate around given axis"))
+    print("  {:30s} -- {:30s}".format("-rb <angle> <atom> <atom>", "rotate around axis defined by pair of atoms"))
+    print("  {:30s} -- {:30s}".format("-rp <angle> <a1> <a2> [...]",
+                                      "rotate around normal of plane defined by list of atoms"))
+    print("  {:30s} -- {:30s}".format("-rv <angle> <x> <y> <z>", "rotate around defined vector"))
+    print("  {:30s} -- {:30s}".format(
+        "-rd <angle> <a1> <a2> <a3> []",
+        "rotate bond around midpoint of a diene (vector from bond midpoint in direction of normal)"))
+    print("  {:30s} -- {:30s}".format("-s[xyz]", "reflect across plane defined by chosen axis as normal"))
+    print("  {:30s} -- {:30s}".format("-sv", "reflect across plane defined by specified normal"))
+    print("  {:30s} -- {:30s}".format("-sb <a1> <a2>", "reflect across a bond"))
+    print("  {:30s} -- {:30s}".format("-sp <a1> <a2> <a3> [...]", "reflect across plane fitted to specified atoms"))
+    print("  {:30s} -- {:30s}".format(
+        "-a <atom1> <atom2> <atom3>",
+        "align such that atom1 and atom2 lie along the x-axis and atom3 is in the xy-plane"))
+    print("  {:30s} -- {:30s}".format(
+        "-p <atom1> ... <atomk>",
+        "align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis"))
+    print("  {:30s} -- {:30s}".format("-op", "translate to center of mass, orient along principle axes"))
 
 
 def consume_arguments(arguments, geom):
