@@ -287,20 +287,20 @@ class GeometryCube(Geometry_):
             natoms *= -1
         origin = self.origin.reshape(3) / bohr2ang # origin should always be in bohr
         nvalstr = f" {self.nval:s}" if self.nval else ""
-        print(f"{natoms:>6d} {origin[0]:16.10f} {origin[1]:16.10f} {origin[2]:16.10f}{nvalstr:s}")
+        print(f"{natoms:>5d} {origin[0]:>11.6f} {origin[1]:>11.6f} {origin[2]:>11.6f}{nvalstr:>5s}".rstrip())
 
         # 4th, 5th, 6th are <n1> <v1> <v2> <v3>
         for i in range(3):
             res = self.resolutions[i]
             axis = self.axes[i, :] # unit on axes shouldn't matter
-            print(f"{res:>6s} {axis[0]:16.10f} {axis[1]:16.10f} {axis[2]:16.10f}")
+            print(f"{res:>5s} {axis[0]:>11.6f} {axis[1]:>11.6f} {axis[2]:>11.6f}")
 
         # next natoms lines define the molecule as
         # <atom number> <charge> <x> <y> <z>
         for i in range(self.natoms):
             atom = self.atomnumber[i]
             xyz = self.coordinates[i, :] / bohr2ang # coordinates always in bohr
-            print(f"{atom:6d} {self.charges[i]:16s} {xyz[0]:16.10f} {xyz[1]:16.10f} {xyz[2]:16.10f}")
+            print(f"{atom:>5d} {self.charges[i]:>11s} {xyz[0]:>11.6f} {xyz[1]:>11.6f} {xyz[2]:>11.6f}")
 
         for v in self.volume_data:
             print(v)
