@@ -7,7 +7,7 @@ ORIENT=$BASE/../orient.py
 
 # general test
 $ORIENT -tx 1.0 -ty -0.7 -tz 0.2 -rx 75 -ry 40 -rz -60 $BASE/test.xyz > $BASE/general/output.xyz
-DIFF=$(diff -b $BASE/general/output.xyz $BASE/general/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/general/output.xyz $BASE/general/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo $?
   echo 'General test failed!'
@@ -16,7 +16,7 @@ fi
 
 # principle axes test
 $ORIENT -op $BASE/test.xyz > $BASE/principle/output.xyz
-DIFF=$(diff -b $BASE/principle/output.xyz $BASE/principle/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/principle/output.xyz $BASE/principle/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'Principle test failed!'
   let nfailed+=1
@@ -24,7 +24,7 @@ fi
 
 # align test
 $ORIENT -a 1 2 3 $BASE/test.xyz > $BASE/align/output.xyz
-DIFF=$(diff -b $BASE/align/output.xyz $BASE/align/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/align/output.xyz $BASE/align/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'Align test failed!'
   let nfailed+=1
@@ -32,7 +32,7 @@ fi
 
 # fitplane test
 $ORIENT -p 1 12 2 3 $BASE/test.xyz > $BASE/fitplane/output.xyz
-DIFF=$(diff -b $BASE/fitplane/output.xyz $BASE/fitplane/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/fitplane/output.xyz $BASE/fitplane/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'fitplane test failed!'
   let nfailed+=1
@@ -40,7 +40,7 @@ fi
 
 # rotatepair test
 $ORIENT -rb 180 17 18 $BASE/test.xyz > $BASE/rotatepair/output.xyz
-DIFF=$(diff -b $BASE/rotatepair/output.xyz $BASE/rotatepair/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/rotatepair/output.xyz $BASE/rotatepair/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'rotatepair test failed!'
   let nfailed+=1
@@ -48,7 +48,7 @@ fi
 
 # reflectplane test
 $ORIENT -sp 2 3 4 12 $BASE/test.xyz > $BASE/reflectplane/output.xyz
-DIFF=$(diff -b $BASE/reflectplane/output.xyz $BASE/reflectplane/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/reflectplane/output.xyz $BASE/reflectplane/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'reflectplane test failed!'
   let nfailed+=1
@@ -56,7 +56,7 @@ fi
 
 # bond reflect test
 $ORIENT -sb 12 13 $BASE/5vu.xyz > $BASE/bondreflect/output.xyz
-DIFF=$(diff -b $BASE/bondreflect/output.xyz $BASE/bondreflect/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/bondreflect/output.xyz $BASE/bondreflect/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'bondreflect test failed!'
   let nfailed+=1
@@ -64,7 +64,7 @@ fi
 
 # diene test
 $ORIENT -rd 90 12 13 14 $BASE/5vu.xyz > $BASE/diene/output.xyz
-DIFF=$(diff -b $BASE/diene/output.xyz $BASE/diene/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/diene/output.xyz $BASE/diene/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'diene test failed!'
   let nfailed+=1
@@ -72,9 +72,41 @@ fi
 
 # rotate around arbitrary vector
 $ORIENT -rv 45 0 1 1 $BASE/5vu.xyz > $BASE/rv/output.xyz
-DIFF=$(diff -b $BASE/rv/output.xyz $BASE/rv/reference.xyz 2>&1)
+DIFF=$(diff -w $BASE/rv/output.xyz $BASE/rv/reference.xyz 2>&1)
 if [ "$DIFF" != "" ]; then
   echo 'rotate vector test failed!'
+  let nfailed+=1
+fi
+
+# translate cube file
+$ORIENT -tc $BASE/cuo.cube > $BASE/translate_CuO_cube/output.cube
+DIFF=$(diff -w $BASE/translate_CuO_cube/output.cube $BASE/translate_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'translate cube test failed!'
+  let nfailed+=1
+fi
+
+# rotate cube file
+$ORIENT -rx 37 -ry 80 -rz 11 $BASE/cuo.cube > $BASE/rotate_CuO_cube/output.cube
+DIFF=$(diff -w $BASE/rotate_CuO_cube/output.cube $BASE/rotate_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'rotate cube test failed!'
+  let nfailed+=1
+fi
+
+# reflect cube file
+$ORIENT -sz $BASE/cuo.cube > $BASE/reflect_CuO_cube/output.cube
+DIFF=$(diff -w $BASE/reflect_CuO_cube/output.cube $BASE/reflect_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'reflect cube test failed!'
+  let nfailed+=1
+fi
+
+# trf cube file
+$ORIENT -tc -rx 70 -tx 1 -ty 2 -tz 3 -sy $BASE/cuo.cube > $BASE/trf_CuO_cube/output.cube
+DIFF=$(diff -w $BASE/trf_CuO_cube/output.cube $BASE/trf_CuO_cube/reference.cube 2>&1)
+if [ "$DIFF" != "" ]; then
+  echo 'trf cube test failed!'
   let nfailed+=1
 fi
 

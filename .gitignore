@@ -1,4 +1,4 @@
-check/*/output.xyz
+check/**/output.*
 
 *.py[cod]
 
