@@ -279,6 +279,8 @@ class GeometryCube(_Geometry):
             static_op(self.axes)
         elif isinstance(operation, Reflect):
             static_op(self.axes)
+        elif isinstance(operation, Scale):
+            static_op(self.axes)
         elif isinstance(operation, ShiftedOperation):
             # extract the non-translation part of the operation:w
             static_op.operation(self.axes)
@@ -785,6 +787,29 @@ class PlaneReflect(Reflect):
 
 
 #-------------------------------------------------------------------------------------------#
+# Scale class                                                                               #
+#-------------------------------------------------------------------------------------------#
+
+
+class Scale(Operation):
+    """Scale all coordinates by a factor"""
+
+    def __init__(self, factor):
+        self.factor = factor
+
+    def __call__(self, data):
+        data *= self.factor
+        return self
+
+    def iscomposable(self, op):
+        return isinstance(op, Scale)
+
+    def compose(self, op):
+        assert self.iscomposable(op)
+        self.factor *= op.factor
+
+
+#-------------------------------------------------------------------------------------------#
 # Compound classes (for when a molecule needs to be shifted to origin and then returned)    #
 #-------------------------------------------------------------------------------------------#
 class ShiftedOperation(Operation):
@@ -863,7 +888,10 @@ def usage():
         ),
         ("-p <atom1> ... <atomk>",
          "align such that input atoms form best fit xy-plane and atom1 and atom2 lie along x-axis"
-        )
+        ),
+        ("-g <factor>", "scale all coordinates by given factor"),
+        ("-gb2a", "convert coordinates from bohr to angstrom"),
+        ("-ga2b", "convert coordinates from angstrom to bohr"),
     ]
 
     for option, hlp in option_help:
@@ -1017,6 +1045,16 @@ def consume_arguments(arguments, geom):
 
             ops.append(CentroidTranslate(iatoms, -1.0))
             ops.append(PlaneRotate(iatoms))
+        elif opt[1] == 'g':
+            if opt[2:] == '':
+                factor = float(options.pop(0))
+            elif opt[2:] == 'b2a':
+                factor = BOHR2ANG
+            elif opt[2:] == 'a2b':
+                factor = 1.0 / BOHR2ANG
+            else:
+                raise Exception("Unrecognized scale option")
+            ops.append(Scale(factor))
         else:
             raise Exception("Unknown operation")
 
@@ -1049,7 +1087,10 @@ def get_options_and_targets(arglist):
         "sz": 0,
         "sv": 3,
         "sb": 2,
-        "sp": "+"
+        "sp": "+",
+        "g": 1,
+        "gb2a": 0,
+        "ga2b": 0,
     }
 
     # lets preprocess the options so we let the filename be anywhere in the list
