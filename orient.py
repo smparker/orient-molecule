@@ -221,7 +221,7 @@ class GeometryXYZ(_Geometry):
 
     def apply(self, operation):
         """Apply a translation/rotation/reflection to the geometry"""
-        operation(self.coordinates)
+        return operation(self.coordinates)
 
     def print(self):
         """print in xyz format"""
@@ -284,6 +284,8 @@ class GeometryCube(_Geometry):
         elif isinstance(operation, ShiftedOperation):
             # extract the non-translation part of the operation:w
             static_op.operation(self.axes)
+
+        return static_op
 
     def print(self):
         """print in cube format"""
@@ -457,6 +459,9 @@ class Operation:
         '''compose this op and input op'''
         raise RuntimeError("This operation not composable")
 
+    def log(self, file=sys.stderr):
+        pass
+
 
 #-------------------------------------------------------------------------------------------#
 # Translation classes                                                                       #
@@ -492,6 +497,10 @@ class StaticTranslate(Translate):
         assert self.iscomposable(op)
 
         self.displacement += op.displacement
+
+    def log(self, file=sys.stderr):
+        print("# translation", file=file)
+        print(f"np.array({self.displacement.tolist()})", file=file)
 
 
 class AtomTranslate(Translate):
@@ -583,6 +592,10 @@ class StaticRotate(Rotate):
 
         rotation = np.dot(self.rot_matrix, op.rot_matrix)
         self.rot_matrix[:, :] = rotation[:, :]
+
+    def log(self, file=sys.stderr):
+        print("# rotation", file=file)
+        print(f"np.array({self.rot_matrix.tolist()})", file=file)
 
     @classmethod
     def from_axis_angle(cls, axis, angle):
@@ -757,6 +770,10 @@ class StaticReflect(Reflect):
     def reflect_func(self, data):
         return self.normal
 
+    def log(self, file=sys.stderr):
+        print("# reflection normal", file=file)
+        print(f"np.array({self.normal.tolist()})", file=file)
+
 
 class BondReflect(Reflect):
     '''Reflect across normal defined by bond'''
@@ -808,6 +825,10 @@ class Scale(Operation):
         assert self.iscomposable(op)
         self.factor *= op.factor
 
+    def log(self, file=sys.stderr):
+        print("# scale", file=file)
+        print(f"{self.factor}", file=file)
+
 
 #-------------------------------------------------------------------------------------------#
 # Compound classes (for when a molecule needs to be shifted to origin and then returned)    #
@@ -828,6 +849,10 @@ class ShiftedOperation(Operation):
         static_op = self.operation(data)
         unshift(data)
         return ShiftedOperation(shift, static_op)
+
+    def log(self, file=sys.stderr):
+        self.shift.log(file=file)
+        self.operation.log(file=file)
 
 
 #-------------------------------------------------------------------------------------------#
@@ -893,6 +918,7 @@ def usage():
         ("-gb2a", "convert coordinates from bohr to angstrom"),
         ("-ga2b", "convert coordinates from angstrom to bohr"),
         ("-op", "moment of inertia principal axis alignment"),
+        ("--log", "write each transformation to stderr as numpy-style code"),
     ]
 
     for option, hlp in option_help:
@@ -1135,6 +1161,10 @@ def orient(arglist):
         usage()
         return []
 
+    log = "--log" in arglist
+    if log:
+        arglist = [a for a in arglist if a != "--log"]
+
     options, filenames = get_options_and_targets(arglist)
 
     geoms = []
@@ -1144,7 +1174,9 @@ def orient(arglist):
     for molecule in geoms:
         ops = consume_arguments(options, molecule)
         for op in ops:
-            molecule.apply(op)
+            static_op = molecule.apply(op)
+            if log:
+                static_op.log()
             if DEBUG:
                 molecule.print()
 
