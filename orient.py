@@ -641,7 +641,7 @@ class InertiaRotate(Rotate):
         inertial_tensor = np.einsum("ax,a,ay->xy", data, self.mass, data)
         inertial_tensor *= -1
         # negate sign to reverse the sorting of the tensor
-        _eig, axes = np.linalg.eigh(-inertial_tensor)
+        _eig, axes = np.linalg.eigh(inertial_tensor)
         axes = axes.T
 
         # adjust sign of axes so third moment moment is positive new in X, and Y axes
@@ -892,6 +892,7 @@ def usage():
         ("-g <factor>", "scale all coordinates by given factor"),
         ("-gb2a", "convert coordinates from bohr to angstrom"),
         ("-ga2b", "convert coordinates from angstrom to bohr"),
+        ("-op", "moment of inertia principal axis alignment"),
     ]
 
     for option, hlp in option_help:
